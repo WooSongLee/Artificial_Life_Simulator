@@ -3,15 +3,24 @@ export { crossoverGenomes } from './crossover'
 export {
   appendGenerationRecord,
   collectGenerationRecord,
-  createNextGeneration,
   generationElapsed,
   generationRemaining,
-  shouldEndGeneration,
+  hasGenerationRecord,
 } from './generations'
 export { clampGenome, createRandomGenome } from './genome'
 export { assignChildBrains, cloneQTable, inheritBrain } from './inheritance'
+export { processMating } from './mating'
 export { mutateGenome } from './mutation'
-export { canReproduce, computeFitness, eligibleParents, nextGenerationSize } from './reproduction'
+export {
+  breedChild,
+  canReproduce,
+  canStartMating,
+  computeFitness,
+  eligibleParents,
+  isMating,
+  isPaired,
+  nextGenerationSize,
+} from './reproduction'
 export { GENOME_GENES } from './types'
 
 export type {

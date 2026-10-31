@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { shortAgentId } from '../../utils/format'
 import { WorldViewer } from '../world/WorldViewer'
-import { EvolutionView, LearningView, SimulationView } from './AnalysisViews'
+import { EvolutionView, ExperimentsView, LearningView, SimulationView } from './AnalysisViews'
 import { Header } from './Header'
 import { SettingsPanel } from './SettingsPanel'
 import { SimulationControls } from './SimulationControls'
@@ -12,23 +12,10 @@ import { WorkspaceTabs, type WorkspaceTab } from './WorkspaceTabs'
 export function SimulatorLayout() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('world')
   const selectedObjectId = useSimulationStore((state) => state.selectedObjectId)
-  const selectedAgent = useSimulationStore(
-    (state) => state.world.agents.find((agent) => agent.id === state.selectedObjectId) ?? null,
-  )
-  const selectedObject = useSimulationStore(
-    (state) => state.world.objects.find((object) => object.id === state.selectedObjectId) ?? null,
-  )
-
-  const selectionLabel = selectedAgent
-    ? shortAgentId(selectedAgent.id)
-    : selectedObject
-      ? selectedObject.id.slice(0, 8)
-      : selectedObjectId
-        ? selectedObjectId.slice(0, 8)
-        : null
+  const selectionLabel = selectedObjectId ? shortAgentId(selectedObjectId) : null
 
   return (
-    <div className="flex h-dvh min-h-[640px] w-full min-w-[960px] flex-col bg-lab-bg text-lab-text">
+    <div className="flex h-dvh min-h-[560px] w-full min-w-[800px] flex-col bg-lab-bg text-lab-text">
       <Header />
 
       <div className="flex min-h-0 flex-1">
@@ -66,6 +53,12 @@ export function SimulatorLayout() {
             {workspaceTab === 'evolution' ? (
               <div className="absolute inset-0">
                 <EvolutionView />
+              </div>
+            ) : null}
+
+            {workspaceTab === 'experiments' ? (
+              <div className="absolute inset-0">
+                <ExperimentsView />
               </div>
             ) : null}
           </div>

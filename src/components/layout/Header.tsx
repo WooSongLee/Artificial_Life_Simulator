@@ -4,15 +4,17 @@ import { SIMULATION_STATUS_LABEL } from '../../utils/status'
 export function Header() {
   const status = useSimulationStore((state) => state.status)
   const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const experiment = useSimulationStore((state) => state.experiment)
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-lab-border bg-lab-panel px-4">
-      <div className="flex items-baseline gap-3">
+      <div className="flex min-w-0 items-baseline gap-3">
         <h1 className="text-sm font-semibold tracking-[0.08em] text-lab-text uppercase">
           Artificial Life Simulator
         </h1>
-        <span className="hidden text-[11px] text-lab-muted sm:inline">
-          생태계 관찰 콘솔
+        <span className="hidden truncate text-[11px] text-lab-muted sm:inline">
+          {experiment.name}
+          {experiment.dirty ? ' · unsaved' : ''}
         </span>
       </div>
 

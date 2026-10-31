@@ -26,21 +26,21 @@ export function getOrCreateQValues(table: Map<StateKey, number[]>, state: StateK
 }
 
 export function maxQValue(qValues: readonly number[]): number {
-  let max = qValues[0] ?? 0
+  let max = Number.isFinite(qValues[0]) ? (qValues[0] ?? 0) : 0
   for (let i = 1; i < qValues.length; i += 1) {
     const value = qValues[i] ?? 0
-    if (value > max) max = value
+    if (Number.isFinite(value) && value > max) max = value
   }
   return max
 }
 
 export function argmaxAction(qValues: readonly number[]): AgentAction {
   let bestIndex = 0
-  let bestValue = qValues[0] ?? 0
+  let bestValue = Number.isFinite(qValues[0]) ? (qValues[0] ?? 0) : Number.NEGATIVE_INFINITY
 
   for (let i = 1; i < qValues.length; i += 1) {
     const value = qValues[i] ?? 0
-    if (value > bestValue) {
+    if (Number.isFinite(value) && value > bestValue) {
       bestValue = value
       bestIndex = i
     }
@@ -56,7 +56,11 @@ export function updateQValue(
   learningRate: number,
   discountFactor: number,
 ): number {
-  return current + learningRate * (reward + discountFactor * nextMax - current)
+  const safeCurrent = Number.isFinite(current) ? current : 0
+  const next =
+    safeCurrent +
+    learningRate * (reward + discountFactor * nextMax - safeCurrent)
+  return Number.isFinite(next) ? next : safeCurrent
 }
 
 export function decayEpsilon(epsilon: number, decay: number, minEpsilon: number): number {

@@ -9,10 +9,28 @@ export const MAX_AGENT_COUNT = 50
 export const INITIAL_AGENT_COUNT = 20
 export const AGENT_COUNT_PRESETS = [5, 12, 20, 40] as const
 
+export const MIN_WORLD_SIZE = 32
+export const MAX_WORLD_SIZE = 80
+export const WORLD_SIZE_PRESETS = [32, 48, 64, 80] as const
+
+export const MIN_FOOD_COUNT = 4
+export const MAX_FOOD_COUNT = 60
+export const MIN_FOOD_REGEN_RATE = 0.2
+export const MAX_FOOD_REGEN_RATE = 4
+export const MIN_OBSTACLE_DENSITY = 0
+export const MAX_OBSTACLE_DENSITY = 1
+export const DEFAULT_OBSTACLE_DENSITY = 0.5
+export const FOOD_REGEN_RATE_PRESETS = [0.5, 1, 1.4, 2] as const
+export const OBSTACLE_DENSITY_PRESETS = [0, 0.25, 0.5, 0.75, 1] as const
+
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   size: 48,
   gridDivisions: 24,
   agentCount: INITIAL_AGENT_COUNT,
+  initialFoodCount: 32,
+  foodRegenRate: 1 / 0.7,
+  obstacleDensity: DEFAULT_OBSTACLE_DENSITY,
+  resourceDistribution: 'uniform',
 }
 
 export const DEFAULT_VIEWER_SETTINGS: ViewerSettings = {
@@ -42,9 +60,17 @@ export const CAMERA_MAX_POLAR = 1.15
 
 export const TICKS_PER_SECOND = 20
 export const SIMULATION_STEP_DT = 1 / TICKS_PER_SECOND
-export const SPEED_OPTIONS = [1, 2, 5, 10, 100, 1000] as const
+export const MIN_SPEED = 1
+export const MAX_SPEED = 100_000_000
+export const SPEED_PRESETS = [1, 10, 100, 1_000, 10_000, 1_000_000, 100_000_000] as const
 export const MIN_STEPS_PER_FRAME = 8
-export const MAX_STEPS_PER_FRAME = 400
+export const MAX_STEPS_PER_FRAME = 80_000
+export const FRAME_STEP_BUDGET_MS = 14
+
+export function clampSpeed(speed: number): number {
+  if (!Number.isFinite(speed)) return MIN_SPEED
+  return clamp(Math.round(speed), MIN_SPEED, MAX_SPEED)
+}
 
 export function getMaxStepsPerFrame(speed: number): number {
   return clamp(Math.ceil((speed * TICKS_PER_SECOND) / 30), MIN_STEPS_PER_FRAME, MAX_STEPS_PER_FRAME)
@@ -96,6 +122,44 @@ export function getTargetFoodCount(agentCount: number): number {
   return clamp(Math.round(agentCount * FOOD_PER_AGENT), MIN_TARGET_FOOD, MAX_TARGET_FOOD)
 }
 
+export function getConfiguredFoodCount(config: WorldConfig): number {
+  return clamp(Math.round(config.initialFoodCount), MIN_FOOD_COUNT, MAX_FOOD_COUNT)
+}
+
+export function getFoodSpawnInterval(config: WorldConfig): number {
+  return 1 / clamp(config.foodRegenRate, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE)
+}
+
+export function getObstacleCounts(config: WorldConfig): { tree: number; rock: number } {
+  const areaScale = (config.size / DEFAULT_WORLD_CONFIG.size) ** 2
+  const density = clamp(config.obstacleDensity, MIN_OBSTACLE_DENSITY, MAX_OBSTACLE_DENSITY)
+  return {
+    tree: Math.round(32 * density * areaScale),
+    rock: Math.round(20 * density * areaScale),
+  }
+}
+
+export function gridDivisionsForSize(size: number): number {
+  return Math.max(8, Math.round(size / 2))
+}
+
+export function clampWorldSize(size: number): number {
+  return Math.round(clamp(size, MIN_WORLD_SIZE, MAX_WORLD_SIZE))
+}
+
 export function clampAgentCount(count: number): number {
   return Math.round(clamp(count, MIN_AGENT_COUNT, MAX_AGENT_COUNT))
+}
+
+export function clampWorldConfig(config: WorldConfig): WorldConfig {
+  const size = clampWorldSize(config.size)
+  return {
+    size,
+    gridDivisions: gridDivisionsForSize(size),
+    agentCount: clampAgentCount(config.agentCount),
+    initialFoodCount: getConfiguredFoodCount(config),
+    foodRegenRate: clamp(config.foodRegenRate, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE),
+    obstacleDensity: clamp(config.obstacleDensity, MIN_OBSTACLE_DENSITY, MAX_OBSTACLE_DENSITY),
+    resourceDistribution: config.resourceDistribution,
+  }
 }

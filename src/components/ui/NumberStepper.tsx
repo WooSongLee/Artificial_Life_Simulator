@@ -4,11 +4,12 @@ interface NumberStepperProps {
   min: number
   max: number
   onChange: (value: number) => void
+  title?: string
 }
 
-export function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps) {
+export function NumberStepper({ label, value, min, max, onChange, title }: NumberStepperProps) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5">
+    <div className="flex items-center justify-between gap-3 py-1.5" title={title}>
       <span className="text-[13px] text-lab-text">{label}</span>
       <div className="flex items-center gap-1">
         <StepButton label="-" disabled={value <= min} onClick={() => onChange(value - 1)} />

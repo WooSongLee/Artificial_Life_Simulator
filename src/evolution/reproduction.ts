@@ -3,7 +3,14 @@ import { clampAgentCount, MIN_AGENT_COUNT } from '../simulation/constants'
 import type { Agent } from '../types/agent'
 import { clamp } from '../utils/math'
 import type { Rng } from '../utils/random'
-import { FITNESS_AGE_WEIGHT, FITNESS_ENERGY_WEIGHT, FITNESS_REWARD_WEIGHT } from './constants'
+import {
+  DESIRE_MATE_THRESHOLD,
+  FITNESS_AGE_WEIGHT,
+  FITNESS_ENERGY_WEIGHT,
+  FITNESS_REWARD_WEIGHT,
+  MIN_MATING_ENERGY,
+  MIN_REPRODUCE_AGE,
+} from './constants'
 import { crossoverGenomes } from './crossover'
 import { mutateGenome } from './mutation'
 import type { EvolutionConfig, Genome, GenomeGene } from './types'
@@ -17,6 +24,42 @@ export interface OffspringBlueprint {
 
 export function canReproduce(agent: Agent): boolean {
   return agent.alive && agent.health > 0
+}
+
+export function isPaired(agent: Agent): boolean {
+  return agent.matingPartnerId !== null
+}
+
+export function isMating(agent: Agent): boolean {
+  return isPaired(agent) && agent.matingTimeLeft > 0
+}
+
+export function canStartMating(agent: Agent): boolean {
+  return (
+    canReproduce(agent) &&
+    !isPaired(agent) &&
+    agent.age >= MIN_REPRODUCE_AGE &&
+    agent.energy >= MIN_MATING_ENERGY &&
+    agent.desire >= DESIRE_MATE_THRESHOLD
+  )
+}
+
+export function breedChild(
+  parentA: Agent,
+  parentB: Agent,
+  config: Pick<EvolutionConfig, 'mutationRate' | 'mutationScale'>,
+  rng: Rng,
+): OffspringBlueprint {
+  const crossed = crossoverGenomes(parentA.genome, parentB.genome, rng)
+  const mutated = mutateGenome(crossed, config, rng)
+  const inheritParent = computeFitness(parentA) >= computeFitness(parentB) ? parentA : parentB
+
+  return {
+    genome: mutated.genome,
+    parentIds: [parentA.id, parentB.id],
+    inheritParentId: inheritParent.id,
+    mutatedGenes: mutated.mutatedGenes,
+  }
 }
 
 export function eligibleParents(agents: readonly Agent[]): Agent[] {
@@ -74,16 +117,7 @@ export function breedOffspring(
   for (let i = 0; i < size; i += 1) {
     const parentA = selectParent(parents, rng)
     const parentB = selectParent(parents, rng)
-    const crossed = crossoverGenomes(parentA.genome, parentB.genome, rng)
-    const mutated = mutateGenome(crossed, config, rng)
-    const inheritParent = computeFitness(parentA) >= computeFitness(parentB) ? parentA : parentB
-
-    offspring.push({
-      genome: mutated.genome,
-      parentIds: [parentA.id, parentB.id],
-      inheritParentId: inheritParent.id,
-      mutatedGenes: mutated.mutatedGenes,
-    })
+    offspring.push(breedChild(parentA, parentB, config, rng))
   }
 
   return offspring

@@ -7,6 +7,8 @@ export interface GenomeAverages {
   energyEfficiency: number
   learningRate: number
   explorationRate: number
+  libido: number
+  lifespan: number
   sampleCount: number
 }
 
@@ -18,6 +20,8 @@ export function averageGenomes(agents: readonly Agent[]): GenomeAverages {
       energyEfficiency: 0,
       learningRate: 0,
       explorationRate: 0,
+      libido: 0,
+      lifespan: 0,
       sampleCount: 0,
     }
   }
@@ -27,6 +31,8 @@ export function averageGenomes(agents: readonly Agent[]): GenomeAverages {
   let energyEfficiency = 0
   let learningRate = 0
   let explorationRate = 0
+  let libido = 0
+  let lifespan = 0
 
   for (const agent of agents) {
     speed += agent.genome.speed
@@ -34,6 +40,8 @@ export function averageGenomes(agents: readonly Agent[]): GenomeAverages {
     energyEfficiency += agent.genome.energyEfficiency
     learningRate += agent.genome.learningRate
     explorationRate += agent.genome.explorationRate
+    libido += agent.genome.libido
+    lifespan += agent.genome.lifespan
   }
 
   const n = agents.length
@@ -43,6 +51,8 @@ export function averageGenomes(agents: readonly Agent[]): GenomeAverages {
     energyEfficiency: energyEfficiency / n,
     learningRate: learningRate / n,
     explorationRate: explorationRate / n,
+    libido: libido / n,
+    lifespan: lifespan / n,
     sampleCount: n,
   }
 }

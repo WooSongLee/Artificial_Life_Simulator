@@ -16,12 +16,17 @@ export interface Agent {
   speed: number
   vision: number
   age: number
+  maxLifespan: number
+  desire: number
   alive: boolean
+  deathCause: 'health' | 'age' | null
   generation: number
   parentIds: [string, string] | null
   inheritParentId: string | null
   genome: Genome
   mutatedGenes: GenomeGene[]
+  matingPartnerId: string | null
+  matingTimeLeft: number
   turnRate: number
   turnBias: number
   wanderTimer: number

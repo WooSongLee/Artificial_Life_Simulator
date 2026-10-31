@@ -16,7 +16,6 @@ export function EvolutionDashboard() {
     inheritQTable,
     mutationRate,
     populationLimit,
-    generationDuration,
   } = useGenerationHistory()
   const previous = history[history.length - 1] ?? null
   const survivalRate = stats.totalAgents === 0 ? 0 : stats.aliveCount / stats.totalAgents
@@ -26,15 +25,13 @@ export function EvolutionDashboard() {
       <section>
         <h2 className="text-[11px] text-lab-muted">Evolution Dashboard</h2>
         <p className="mt-1 text-[12px] leading-5 text-lab-muted">
-          세대가 끝나면 그 세대의 실측값만 기록한다. 진화가 반드시 생존이나 보상을 개선한다고
-          가정하지 않는다. 유전 정보와 Q-Table은 별도다.
+          다음 세대가 실제로 태어나거나 전멸할 때만 그 세대의 실측값을 기록한다. 진화가 반드시
+          생존이나 보상을 개선한다고 가정하지 않는다. 유전 정보와 Q-Table은 별도다.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
           <StatCard label="Generation" value={stats.generation} tone="cyan" />
-          <StatCard
-            label="Generation Time"
-            value={`${formatSimulationTime(stats.generationElapsed)} / ${formatSimulationTime(generationDuration)}`}
-          />
+          <StatCard label="Births" value={stats.birthCount} />
+          <StatCard label="Mating Pairs" value={stats.matingCount} />
           <StatCard
             label="Survival Rate"
             value={`${(survivalRate * 100).toFixed(0)}%`}
@@ -53,7 +50,7 @@ export function EvolutionDashboard() {
       <section>
         <h2 className="text-[11px] text-lab-muted">Current Genome Averages</h2>
         <p className="mt-1 text-[12px] leading-5 text-lab-muted">
-          현재 세대 전체 개체의 평균이다. 세대가 끝나기 전에는 이력에 넣지 않는다.
+          현재 월드에 있는 개체의 평균이다. 다음 세대가 태어나기 전에는 이력에 넣지 않는다.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
           <StatCard label="Speed" value={currentAverages.speed.toFixed(2)} />
@@ -65,6 +62,8 @@ export function EvolutionDashboard() {
             value={currentAverages.explorationRate.toFixed(2)}
             tone="cyan"
           />
+          <StatCard label="Libido" value={currentAverages.libido.toFixed(2)} />
+          <StatCard label="Lifespan" value={`${currentAverages.lifespan.toFixed(0)}s`} />
           <StatCard label="Mutation Rate" value={`${(mutationRate * 100).toFixed(0)}%`} />
         </div>
       </section>
@@ -130,7 +129,7 @@ export function EvolutionDashboard() {
         {previous ? <GenerationDelta record={previous} /> : (
           <div className="mt-3">
             <EmptyState>
-              {`첫 세대가 끝나려면 ${formatSimulationTime(generationDuration)}가 지나거나 전멸해야 한다.`}
+              첫 세대 기록은 2세대가 태어나거나 전멸해야 남는다.
             </EmptyState>
           </div>
         )}
@@ -150,7 +149,6 @@ export function EvolutionDashboard() {
       <section>
         <h2 className="text-[11px] text-lab-muted">Evolution Settings</h2>
         <div className="mt-3 space-y-2 border border-lab-border bg-lab-elevated px-3 py-3 text-[13px]">
-          <InfoRow label="Generation Duration" value={`${generationDuration.toFixed(0)}s`} />
           <InfoRow label="Population Limit" value={populationLimit.toString()} />
           <InfoRow label="Mutation Rate" value={`${(mutationRate * 100).toFixed(0)}% / gene`} />
           <InfoRow label="Q-Table Inheritance" value={inheritQTable ? 'On' : 'Off'} />
@@ -197,7 +195,10 @@ function GenerationDelta({ record }: { record: GenerationRecord }) {
   return (
     <div className="mt-3 space-y-2 border border-lab-border bg-lab-elevated px-3 py-3 text-[13px]">
       <InfoRow label="Generation" value={`${record.generation}`} />
-      <InfoRow label="End Reason" value={record.endReason === 'time' ? 'Time limit' : 'Extinction'} />
+      <InfoRow
+        label="End Reason"
+        value={record.endReason === 'birth' ? 'Next generation born' : 'Extinction'}
+      />
       <InfoRow label="Duration" value={formatSimulationTime(record.duration)} />
       <InfoRow label="Survival Rate" value={`${(record.survivalRate * 100).toFixed(0)}%`} />
       <InfoRow label="Avg Lifespan" value={`${record.averageLifespan.toFixed(1)}s`} />

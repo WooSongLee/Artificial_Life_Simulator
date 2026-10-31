@@ -20,7 +20,19 @@ export const GENE_RANGES: Record<GenomeGene, GeneRange> = {
   energyEfficiency: { min: 0.85, max: 1.2 },
   learningRate: { min: 0.05, max: 0.25 },
   explorationRate: { min: 0.5, max: 1 },
+  libido: { min: 0.45, max: 1.35 },
+  lifespan: { min: 100, max: 220 },
 }
+
+export const DESIRE_GAIN_PER_SEC = 3.2
+export const DESIRE_MATE_THRESHOLD = 70
+export const DESIRE_AFTER_MATING = 8
+export const MIN_REPRODUCE_AGE = 16
+export const MIN_MATING_ENERGY = 28
+export const MATING_RANGE = 1.7
+export const MATING_DURATION = 2.4
+export const MATING_ENERGY_DRAIN_PER_SEC = 8
+export const MAX_DEAD_AGENTS = 40
 
 export const FITNESS_AGE_WEIGHT = 1
 export const FITNESS_REWARD_WEIGHT = 0.2

@@ -158,8 +158,8 @@ export function LearningDashboard() {
             value={learning.learningEnabled ? 'On' : 'Off'}
           />
           <p className="pt-1 text-[12px] leading-5 text-lab-muted">
-            Q-update의 α와 초기 epsilon은 각 개체의 Genome 값이다. 위 Config Learning Rate는 실험
-            기본값이며 유전 특성과 같은 값이 아니다.
+            좌측 설정에서 학습 파라미터와 보상을 바꿀 수 있다. Q-update의 α와 초기 epsilon은 각
+            개체의 Genome 값이다. Config Learning Rate와 Initial Epsilon은 새 개체의 Genome 기본값이다.
           </p>
         </div>
       </section>

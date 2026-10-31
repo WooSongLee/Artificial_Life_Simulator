@@ -1,16 +1,21 @@
+import {
+  DESIRE_GAIN_PER_SEC,
+  MATING_ENERGY_DRAIN_PER_SEC,
+} from '../evolution/constants'
+import { findNearestMate, shouldSeekMate } from '../evolution/mating'
+import { isMating } from '../evolution/reproduction'
 import { applyLearningUpdate, decideAction, type LearningStepContext } from '../learning/controller'
 import { findFoodInEatRange } from '../learning/observation'
 import type { AgentAction } from '../learning/types'
 import type { Agent } from '../types/agent'
 import type { WorldObject, WorldState } from '../types/world'
-import { clampStat, wrapAngle } from '../utils/math'
+import { clampStat, finiteNumber, rotateTowards, wrapAngle } from '../utils/math'
 import {
   AGENT_RADIUS,
   ENERGY_CRITICAL,
   ENERGY_DRAIN_PER_SEC,
   FOOD_ENERGY_RESTORE,
   FOOD_HUNGER_RELIEF,
-  FOOD_SPAWN_INTERVAL,
   HEALTH_DRAIN_PER_SEC,
   HEALTH_REGEN_PER_SEC,
   HUNGER_DRAIN_THRESHOLD,
@@ -18,7 +23,8 @@ import {
   HUNGRY_EXTRA_DRAIN_PER_SEC,
   MOVE_ENERGY_DRAIN_MULTIPLIER,
   REST_ENERGY_DRAIN_MULTIPLIER,
-  getTargetFoodCount,
+  getConfiguredFoodCount,
+  getFoodSpawnInterval,
 } from './constants'
 import { collidesWithObstacles, isInsideWorld } from './spatial'
 import { createWorldObject } from './worldFactory'
@@ -44,6 +50,10 @@ function applyMetabolism(agent: Agent, dt: number, action: AgentAction): Agent {
     energy = clampStat(energy - HUNGRY_EXTRA_DRAIN_PER_SEC * dt / efficiency)
   }
 
+  if (isMating(agent)) {
+    energy = clampStat(energy - MATING_ENERGY_DRAIN_PER_SEC * dt / efficiency)
+  }
+
   let health = agent.health
   if (energy <= ENERGY_CRITICAL) {
     const severity = 1 - energy / ENERGY_CRITICAL
@@ -59,6 +69,9 @@ function applyMetabolism(agent: Agent, dt: number, action: AgentAction): Agent {
       hunger,
       health: 0,
       alive: false,
+      deathCause: agent.deathCause ?? 'health',
+      matingPartnerId: null,
+      matingTimeLeft: 0,
     }
   }
 
@@ -71,11 +84,55 @@ function applyMetabolism(agent: Agent, dt: number, action: AgentAction): Agent {
   }
 }
 
+function applyDrives(agent: Agent, dt: number): Agent {
+  const age = agent.age + dt
+  if (age >= agent.maxLifespan) {
+    return {
+      ...agent,
+      age,
+      health: 0,
+      alive: false,
+      deathCause: 'age',
+      matingPartnerId: null,
+      matingTimeLeft: 0,
+    }
+  }
+
+  const matingTimeLeft = agent.matingPartnerId === null
+    ? 0
+    : Math.max(0, agent.matingTimeLeft - dt)
+  const desire = agent.matingPartnerId === null
+    ? clampStat(agent.desire + DESIRE_GAIN_PER_SEC * agent.genome.libido * dt)
+    : agent.desire
+
+  return {
+    ...agent,
+    age,
+    desire,
+    matingTimeLeft,
+  }
+}
+
+function seekMate(agent: Agent, world: WorldState, dt: number): Agent {
+  const mate = findNearestMate(agent, world.agents)
+  if (!mate) return agent
+
+  const target = Math.atan2(mate.position.x - agent.position.x, mate.position.z - agent.position.z)
+  const turned = {
+    ...agent,
+    rotation: rotateTowards(agent.rotation, target, agent.turnRate * dt),
+  }
+  return moveForward(turned, world, dt).agent
+}
+
 function moveForward(agent: Agent, world: WorldState, dt: number): { agent: Agent; collided: boolean } {
-  const distance = agent.speed * dt
-  const x = agent.position.x + Math.sin(agent.rotation) * distance
-  const z = agent.position.z + Math.cos(agent.rotation) * distance
+  const distance = finiteNumber(agent.speed) * dt
+  const rotation = wrapAngle(agent.rotation)
+  const x = agent.position.x + Math.sin(rotation) * distance
+  const z = agent.position.z + Math.cos(rotation) * distance
   const collided =
+    !Number.isFinite(x) ||
+    !Number.isFinite(z) ||
     !isInsideWorld(x, z, world.config.size) ||
     collidesWithObstacles(x, z, AGENT_RADIUS, world.objects)
 
@@ -86,6 +143,7 @@ function moveForward(agent: Agent, world: WorldState, dt: number): { agent: Agen
   return {
     agent: {
       ...agent,
+      rotation,
       position: { x, z },
     },
     collided: false,
@@ -156,20 +214,52 @@ export function updateAgent(
   dt: number,
   context: LearningStepContext,
 ): AgentTickResult {
-  if (!agent.alive) {
-    return { agent, consumedFoodId: null }
+  if (!agent.alive || agent.health <= 0) {
+    return {
+      agent: agent.alive
+        ? {
+            ...agent,
+            health: 0,
+            alive: false,
+            deathCause: agent.deathCause ?? 'health',
+            matingPartnerId: null,
+            matingTimeLeft: 0,
+          }
+        : agent,
+      consumedFoodId: null,
+    }
   }
 
-  const energyBefore = agent.energy
-  const hungerBefore = agent.hunger
-  const foodInEatRange = findFoodInEatRange(agent, world.objects) !== null
-  const decision = decideAction(agent, world, context)
-  const executed = executeAction(agent, decision.selection.action, world, dt)
-  const aged: Agent = {
-    ...executed.agent,
-    age: agent.age + dt,
+  const driven = applyDrives(agent, dt)
+  if (!driven.alive) {
+    return { agent: driven, consumedFoodId: null }
   }
-  const nextAgent = applyMetabolism(aged, dt, decision.selection.action)
+
+  const energyBefore = driven.energy
+  const hungerBefore = driven.hunger
+  const foodInEatRange = findFoodInEatRange(driven, world.objects) !== null
+  const mating = isMating(driven)
+  const seeking = !mating && shouldSeekMate(driven)
+
+  if (mating || seeking) {
+    const acted = mating
+      ? consumeNearbyFood(driven, world.objects)
+      : consumeNearbyFood(seekMate(driven, world, dt), world.objects)
+    const nextAgent = applyMetabolism(acted.agent, dt, mating ? 'REST' : 'MOVE_FORWARD')
+    return {
+      agent: {
+        ...nextAgent,
+        lastAction: mating ? 'REST' : 'MOVE_FORWARD',
+        lastReward: 0,
+        lastStateKey: driven.lastStateKey,
+      },
+      consumedFoodId: acted.consumedFoodId,
+    }
+  }
+
+  const decision = decideAction(driven, world, context)
+  const executed = executeAction(driven, decision.selection.action, world, dt)
+  const nextAgent = applyMetabolism(executed.agent, dt, decision.selection.action)
   const died = !nextAgent.alive
 
   const nextWorld: WorldState = executed.consumedFoodId
@@ -213,11 +303,12 @@ export function respawnFood(
   world: WorldState,
   dt: number,
 ): { objects: WorldObject[]; foodSpawnCooldown: number } {
-  const targetFoodCount = getTargetFoodCount(world.config.agentCount)
+  const targetFoodCount = getConfiguredFoodCount(world.config)
+  const spawnInterval = getFoodSpawnInterval(world.config)
   const foodCount = objects.reduce((count, object) => count + (object.type === 'food' ? 1 : 0), 0)
 
   if (foodCount >= targetFoodCount) {
-    return { objects, foodSpawnCooldown: FOOD_SPAWN_INTERVAL }
+    return { objects, foodSpawnCooldown: spawnInterval }
   }
 
   let cooldown = world.foodSpawnCooldown - dt
@@ -229,12 +320,12 @@ export function respawnFood(
       0,
     )
     if (currentFood >= targetFoodCount) {
-      cooldown = FOOD_SPAWN_INTERVAL
+      cooldown = spawnInterval
       break
     }
 
     nextObjects.push(createWorldObject('food', world.config, nextObjects))
-    cooldown += FOOD_SPAWN_INTERVAL
+    cooldown += spawnInterval
   }
 
   return { objects: nextObjects, foodSpawnCooldown: cooldown }

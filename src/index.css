@@ -28,8 +28,8 @@ body {
 }
 
 #root {
-  min-width: 960px;
-  min-height: 640px;
+  min-width: 800px;
+  min-height: 560px;
 }
 
 body {

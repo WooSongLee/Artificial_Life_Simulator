@@ -1,21 +1,26 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { WorldObjectMesh } from './WorldObjectMesh'
 
 export function WorldObjects() {
-  const objects = useSimulationStore((state) => state.world.objects)
-  const showTrees = useSimulationStore((state) => state.settings.showTrees)
-  const showRocks = useSimulationStore((state) => state.settings.showRocks)
-  const showFood = useSimulationStore((state) => state.settings.showFood)
+  const objectIds = useSimulationStore(
+    useShallow((state) =>
+      state.world.objects
+        .filter((object) => {
+          if (object.type === 'tree') return state.settings.showTrees
+          if (object.type === 'rock') return state.settings.showRocks
+          if (object.type === 'food') return state.settings.showFood
+          return false
+        })
+        .map((object) => object.id),
+    ),
+  )
 
   return (
     <group>
-      {objects.map((object) => {
-        if (object.type === 'tree' && !showTrees) return null
-        if (object.type === 'rock' && !showRocks) return null
-        if (object.type === 'food' && !showFood) return null
-
-        return <WorldObjectMesh key={object.id} object={object} />
-      })}
+      {objectIds.map((id) => (
+        <WorldObjectMesh key={id} objectId={id} />
+      ))}
     </group>
   )
 }

@@ -1,19 +1,9 @@
 import { getBrain } from '../learning/brain'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
-import { createAgent } from '../simulation/agentFactory'
-import { topUpFood } from '../simulation/worldFactory'
 import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
-import { isPopulationExtinct } from '../utils/agentStats'
-import type { Rng } from '../utils/random'
 import { MAX_GENERATION_RECORDS } from './constants'
-import { eligibleParents, nextGenerationSize, breedOffspring } from './reproduction'
-import type {
-  EvolutionConfig,
-  GenerationEndReason,
-  GenerationRecord,
-  MutationSummary,
-} from './types'
+import type { GenerationEndReason, GenerationRecord, MutationSummary } from './types'
 
 export function generationElapsed(generationStartTick: number, tick: number): number {
   return Math.max(0, (tick - generationStartTick) * SIMULATION_STEP_DT)
@@ -25,16 +15,6 @@ export function generationRemaining(
   duration: number,
 ): number {
   return Math.max(0, duration - generationElapsed(generationStartTick, tick))
-}
-
-export function shouldEndGeneration(
-  world: WorldState,
-  tick: number,
-  config: EvolutionConfig,
-): GenerationEndReason | null {
-  if (isPopulationExtinct(world.agents)) return 'extinction'
-  if (generationElapsed(world.generationStartTick, tick) >= config.generationDuration) return 'time'
-  return null
 }
 
 export function summarizeMutations(agents: readonly Agent[], mutationRate: number): MutationSummary {
@@ -59,8 +39,9 @@ export function collectGenerationRecord(
   tick: number,
   reason: GenerationEndReason,
   mutationRate: number,
+  generation = world.generation,
 ): GenerationRecord {
-  const agents = world.agents
+  const agents = world.agents.filter((agent) => agent.generation === generation)
   const populationSize = agents.length
   const aliveCount = agents.filter((agent) => agent.alive).length
   let ageSum = 0
@@ -89,7 +70,7 @@ export function collectGenerationRecord(
   const divisor = populationSize === 0 ? 1 : populationSize
 
   return {
-    generation: world.generation,
+    generation,
     populationSize,
     aliveCount,
     survivalRate: populationSize === 0 ? 0 : aliveCount / populationSize,
@@ -118,43 +99,6 @@ export function appendGenerationRecord(
   return next.slice(next.length - MAX_GENERATION_RECORDS)
 }
 
-export function createNextGeneration(
-  world: WorldState,
-  tick: number,
-  config: EvolutionConfig,
-  rng: Rng,
-): { world: WorldState; previousAgentIds: string[] } | null {
-  const parents = eligibleParents(world.agents)
-  if (parents.length === 0) return null
-
-  const childCount = nextGenerationSize(world.config.agentCount, config.populationLimit)
-  const blueprints = breedOffspring(parents, childCount, config, rng)
-  const children: Agent[] = []
-  const previousAgentIds = world.agents.map((agent) => agent.id)
-
-  for (const blueprint of blueprints) {
-    const child = createAgent({ ...world, agents: children }, children, rng, {
-      genome: blueprint.genome,
-      generation: world.generation + 1,
-      parentIds: blueprint.parentIds,
-      inheritParentId: blueprint.inheritParentId,
-      mutatedGenes: blueprint.mutatedGenes,
-    })
-    children.push(child)
-  }
-
-  const nextWorld: WorldState = {
-    ...world,
-    generation: world.generation + 1,
-    generationStartTick: tick,
-    agents: children,
-  }
-
-  return {
-    world: {
-      ...nextWorld,
-      objects: topUpFood(nextWorld, rng),
-    },
-    previousAgentIds,
-  }
+export function hasGenerationRecord(history: readonly GenerationRecord[], generation: number): boolean {
+  return history.some((record) => record.generation === generation)
 }

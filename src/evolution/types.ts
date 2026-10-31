@@ -4,6 +4,8 @@ export const GENOME_GENES = [
   'energyEfficiency',
   'learningRate',
   'explorationRate',
+  'libido',
+  'lifespan',
 ] as const
 
 export type GenomeGene = (typeof GENOME_GENES)[number]
@@ -14,6 +16,8 @@ export interface Genome {
   energyEfficiency: number
   learningRate: number
   explorationRate: number
+  libido: number
+  lifespan: number
 }
 
 export interface GeneRange {
@@ -29,7 +33,7 @@ export interface EvolutionConfig {
   inheritQTable: boolean
 }
 
-export type GenerationEndReason = 'time' | 'extinction'
+export type GenerationEndReason = 'birth' | 'extinction'
 
 export interface MutationSummary {
   mutatedAgentCount: number

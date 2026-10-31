@@ -1,7 +1,8 @@
+import type { ExperimentIdentity, ExperimentRecord } from '../experiments/types'
 import type { EvolutionConfig, GenerationRecord } from '../evolution/types'
-import type { LearningConfig } from '../learning/types'
+import type { LearningConfig, RewardConfig } from '../learning/types'
 import type { AgentStats, AgentTrail } from './agent'
-import type { WorldObjectType, WorldState } from './world'
+import type { WorldConfig, WorldObjectType, WorldState } from './world'
 
 export type SimulationStatus = 'idle' | 'running' | 'paused' | 'ended'
 
@@ -52,7 +53,9 @@ export interface WorldStats {
   averageLifespan: number
   generation: number
   generationElapsed: number
-  generationRemaining: number
+  birthCount: number
+  matingCount: number
+  averageDesire: number
 }
 
 export interface SimulationSnapshot {
@@ -73,7 +76,11 @@ export interface SimulationState {
   cameraResetToken: number
   learningEnabled: boolean
   learningConfig: LearningConfig
+  rewardConfig: RewardConfig
   evolutionConfig: EvolutionConfig
+  pendingWorldConfig: WorldConfig | null
+  experiment: ExperimentIdentity
+  hydrated: boolean
 }
 
 export interface SimulationActions {
@@ -87,8 +94,16 @@ export interface SimulationActions {
   setLearningEnabled: (enabled: boolean) => void
   setInheritQTable: (enabled: boolean) => void
   setPopulationLimit: (limit: number) => void
-  setGenerationDuration: (seconds: number) => void
   setAgentCount: (count: number) => void
+  advance: (steps: number, budgetMs?: number) => void
+  setWorldConfig: (config: Partial<WorldConfig>) => void
+  setLearningConfig: (config: Partial<LearningConfig>) => void
+  setRewardConfig: (config: Partial<RewardConfig>) => void
+  setExperimentName: (name: string) => void
+  newExperiment: () => void
+  loadExperimentRecord: (record: ExperimentRecord) => void
+  markSaved: (updatedAt: string) => void
+  markHydrated: () => void
   addObject: (type: WorldObjectType) => void
   resetCamera: () => void
 }

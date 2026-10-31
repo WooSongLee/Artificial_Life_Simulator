@@ -27,8 +27,25 @@ export function AgentInspection({ agent }: { agent: Agent }) {
             value={`${agent.position.x.toFixed(2)}, ${agent.position.z.toFixed(2)}`}
           />
           <InfoRow label="Heading" value={`${formatHeading(agent.rotation)}°`} />
-          <InfoRow label="Survival Time" value={`${agent.age.toFixed(1)}s`} />
+          <InfoRow
+            label="Survival Time"
+            value={`${agent.age.toFixed(1)}s / ${agent.maxLifespan.toFixed(0)}s`}
+          />
           <InfoRow label="Generation" value={`${agent.generation}`} />
+          <InfoRow
+            label="Mating"
+            value={agent.matingPartnerId && agent.matingTimeLeft > 0 ? 'Mating' : 'Idle'}
+          />
+          <InfoRow
+            label="Death Cause"
+            value={
+              agent.deathCause === 'age'
+                ? 'Old age'
+                : agent.deathCause === 'health'
+                  ? 'Health'
+                  : '—'
+            }
+          />
           <InfoRow label="Speed" value={`${agent.speed.toFixed(2)} u/s`} />
           <InfoRow label="Vision" value={`${agent.vision.toFixed(1)} u`} />
         </div>
@@ -42,6 +59,8 @@ export function AgentInspection({ agent }: { agent: Agent }) {
           <InfoRow label="Energy Efficiency" value={agent.genome.energyEfficiency.toFixed(2)} />
           <InfoRow label="Learning Rate" value={agent.genome.learningRate.toFixed(3)} />
           <InfoRow label="Exploration Rate" value={agent.genome.explorationRate.toFixed(3)} />
+          <InfoRow label="Libido" value={agent.genome.libido.toFixed(2)} />
+          <InfoRow label="Lifespan" value={`${agent.genome.lifespan.toFixed(0)}s`} />
           <InfoRow
             label="Parents"
             value={
@@ -67,6 +86,12 @@ export function AgentInspection({ agent }: { agent: Agent }) {
           <Meter label="Energy" value={agent.energy} tone="bg-lab-warn" />
           <Meter label="Hunger" value={agent.hunger} tone="bg-lab-danger" />
           <Meter label="Health" value={agent.health} tone="bg-lab-accent" />
+          <Meter label="Desire" value={agent.desire} tone="bg-[#f071a8]" />
+          <Meter
+            label="Life"
+            value={agent.maxLifespan <= 0 ? 0 : (1 - agent.age / agent.maxLifespan) * 100}
+            tone="bg-lab-info"
+          />
         </div>
       </section>
 
@@ -239,4 +264,6 @@ const GENE_LABELS: Record<string, string> = {
   energyEfficiency: 'Eff.',
   learningRate: 'α',
   explorationRate: 'Explore',
+  libido: 'Libido',
+  lifespan: 'Life',
 }

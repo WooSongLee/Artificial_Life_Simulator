@@ -2,11 +2,12 @@ interface ToggleProps {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  title?: string
 }
 
-export function Toggle({ label, checked, onChange }: ToggleProps) {
+export function Toggle({ label, checked, onChange, title }: ToggleProps) {
   return (
-    <label className="flex items-center justify-between gap-3 py-1.5">
+    <label className="flex items-center justify-between gap-3 py-1.5" title={title}>
       <span className="text-[13px] text-lab-text">{label}</span>
       <button
         type="button"

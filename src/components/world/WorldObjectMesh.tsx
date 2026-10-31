@@ -1,9 +1,8 @@
 import type { ThreeEvent } from '@react-three/fiber'
-import type { WorldObject } from '../../types/world'
 import { useSimulationStore } from '../../store/useSimulationStore'
 
 interface WorldObjectMeshProps {
-  object: WorldObject
+  objectId: string
 }
 
 function TreeMesh({ scale }: { scale: number }) {
@@ -62,9 +61,14 @@ function SelectionRing() {
   )
 }
 
-export function WorldObjectMesh({ object }: WorldObjectMeshProps) {
-  const selected = useSimulationStore((state) => state.selectedObjectId === object.id)
+export function WorldObjectMesh({ objectId }: WorldObjectMeshProps) {
+  const object = useSimulationStore((state) =>
+    state.world.objects.find((item) => item.id === objectId),
+  )
+  const selected = useSimulationStore((state) => state.selectedObjectId === objectId)
   const selectObject = useSimulationStore((state) => state.selectObject)
+
+  if (!object) return null
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()

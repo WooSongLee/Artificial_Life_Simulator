@@ -1,25 +1,14 @@
 import { averageGenomes, averageLifetimeReward } from '../evolution/metrics'
-import { useSimulationStore } from '../store/useSimulationStore'
+import { useThrottledStore } from './useThrottledStore'
 
 export function useGenerationHistory() {
-  const history = useSimulationStore((state) => state.generationHistory)
-  const agents = useSimulationStore((state) => state.world.agents)
-  const generation = useSimulationStore((state) => state.world.generation)
-  const inheritQTable = useSimulationStore((state) => state.evolutionConfig.inheritQTable)
-  const mutationRate = useSimulationStore((state) => state.evolutionConfig.mutationRate)
-  const populationLimit = useSimulationStore((state) => state.evolutionConfig.populationLimit)
-  const generationDuration = useSimulationStore((state) => state.evolutionConfig.generationDuration)
-
-  useSimulationStore((state) => state.tick)
-
-  return {
-    history,
-    currentAverages: averageGenomes(agents),
-    currentReward: averageLifetimeReward(agents),
-    generation,
-    inheritQTable,
-    mutationRate,
-    populationLimit,
-    generationDuration,
-  }
+  return useThrottledStore((state) => ({
+    history: state.generationHistory,
+    currentAverages: averageGenomes(state.world.agents),
+    currentReward: averageLifetimeReward(state.world.agents),
+    generation: state.world.generation,
+    inheritQTable: state.evolutionConfig.inheritQTable,
+    mutationRate: state.evolutionConfig.mutationRate,
+    populationLimit: state.evolutionConfig.populationLimit,
+  }))
 }

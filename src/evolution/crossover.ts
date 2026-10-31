@@ -8,6 +8,8 @@ export function crossoverGenomes(parentA: Genome, parentB: Genome, rng: Rng): Ge
     energyEfficiency: pickGene(parentA.energyEfficiency, parentB.energyEfficiency, rng),
     learningRate: pickGene(parentA.learningRate, parentB.learningRate, rng),
     explorationRate: pickGene(parentA.explorationRate, parentB.explorationRate, rng),
+    libido: pickGene(parentA.libido, parentB.libido, rng),
+    lifespan: pickGene(parentA.lifespan, parentB.lifespan, rng),
   }
 }
 

@@ -5,7 +5,7 @@ import {
   LEARNING_REWARD_WINDOW,
   STATE_SPACE_SIZE,
 } from './constants'
-import { meanQValue } from './qLearning'
+import { createEmptyQValues, meanQValue } from './qLearning'
 import { AGENT_ACTIONS } from './types'
 import type {
   AgentAction,
@@ -15,6 +15,17 @@ import type {
   LearningStats,
   QTableSummary,
 } from './types'
+
+export interface SerializedBrain {
+  agentId: string
+  qTable: Array<[string, number[]]>
+  epsilon: number
+  totalSteps: number
+  totalReward: number
+  recentRewards: number[]
+  recentExplored: number[]
+  actionCounts: Record<AgentAction, number>
+}
 
 const brains = new Map<string, AgentBrain>()
 
@@ -132,6 +143,62 @@ export function getBrain(agentId: string): AgentBrain | undefined {
 export function removeBrains(agentIds: Iterable<string>): void {
   for (const id of agentIds) {
     brains.delete(id)
+  }
+}
+
+export function serializeBrain(agentId: string, brain: AgentBrain): SerializedBrain {
+  return {
+    agentId,
+    qTable: Array.from(brain.qTable.entries()).map(([key, values]) => [key, values.slice()]),
+    epsilon: brain.epsilon,
+    totalSteps: brain.totalSteps,
+    totalReward: brain.totalReward,
+    recentRewards: brain.recentRewards.slice(),
+    recentExplored: brain.recentExplored.slice(),
+    actionCounts: { ...brain.actionCounts },
+  }
+}
+
+function finiteQRow(values: number[]): number[] {
+  const row = createEmptyQValues()
+  for (let i = 0; i < row.length; i += 1) {
+    const value = values[i]
+    row[i] = Number.isFinite(value) ? (value as number) : 0
+  }
+  return row
+}
+
+export function deserializeBrain(record: SerializedBrain): AgentBrain {
+  return {
+    qTable: new Map(record.qTable.map(([key, values]) => [key, finiteQRow(values)])),
+    epsilon: Number.isFinite(record.epsilon) ? record.epsilon : 0,
+    totalSteps: Math.max(0, Number.isFinite(record.totalSteps) ? record.totalSteps : 0),
+    totalReward: Number.isFinite(record.totalReward) ? record.totalReward : 0,
+    recentRewards: record.recentRewards.filter((value) => Number.isFinite(value)),
+    recentExplored: record.recentExplored.filter((value) => Number.isFinite(value)),
+    actionCounts: { ...record.actionCounts },
+  }
+}
+
+export function exportBrains(agentIds?: Iterable<string>): SerializedBrain[] {
+  if (!agentIds) {
+    return Array.from(brains.entries()).map(([agentId, brain]) => serializeBrain(agentId, brain))
+  }
+
+  const records: SerializedBrain[] = []
+  for (const agentId of agentIds) {
+    const brain = brains.get(agentId)
+    if (brain) {
+      records.push(serializeBrain(agentId, brain))
+    }
+  }
+  return records
+}
+
+export function importBrains(records: SerializedBrain[]): void {
+  brains.clear()
+  for (const record of records) {
+    brains.set(record.agentId, deserializeBrain(record))
   }
 }
 

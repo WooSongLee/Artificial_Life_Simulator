@@ -1,10 +1,11 @@
-export type WorkspaceTab = 'world' | 'simulation' | 'learning' | 'evolution'
+export type WorkspaceTab = 'world' | 'simulation' | 'learning' | 'evolution' | 'experiments'
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'world', label: 'World' },
   { id: 'simulation', label: 'Simulation' },
   { id: 'learning', label: 'Learning' },
   { id: 'evolution', label: 'Evolution' },
+  { id: 'experiments', label: 'Experiments' },
 ]
 
 export function WorkspaceTabs({

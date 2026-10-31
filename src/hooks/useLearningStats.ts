@@ -1,19 +1,18 @@
 import { getAgentLearningView, summarizeLearning } from '../learning/brain'
-import { useSimulationStore } from '../store/useSimulationStore'
 import type { Agent } from '../types/agent'
+import { useThrottledStore } from './useThrottledStore'
 
 export function useLearningStats() {
-  const tick = useSimulationStore((state) => state.tick)
-  const learningEnabled = useSimulationStore((state) => state.learningEnabled)
-  const agents = useSimulationStore((state) => state.world.agents)
-
-  return {
-    tick,
-    ...summarizeLearning(agents, learningEnabled),
-  }
+  return useThrottledStore((state) => ({
+    tick: state.tick,
+    ...summarizeLearning(state.world.agents, state.learningEnabled),
+  }))
 }
 
 export function useAgentLearningView(agent: Agent) {
-  useSimulationStore((state) => state.tick)
-  return getAgentLearningView(agent)
+  return useThrottledStore(
+    () => getAgentLearningView(agent),
+    150,
+    `${agent.id}:${agent.lastAction ?? ''}:${agent.lastReward}`,
+  )
 }

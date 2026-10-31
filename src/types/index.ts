@@ -11,6 +11,7 @@ export type { Agent, AgentPosition, AgentStats, AgentTrail, AgentTrailPoint } fr
 
 export type {
   ObjectDefinition,
+  ResourceDistribution,
   Vec3,
   WorldConfig,
   WorldObject,

@@ -1,3 +1,4 @@
+import { clamp } from '../utils/math'
 import type { LearningConfig, RewardConfig } from './types'
 
 export const DEFAULT_LEARNING_CONFIG: LearningConfig = {
@@ -16,7 +17,82 @@ export const DEFAULT_REWARD_CONFIG: RewardConfig = {
   efficientRest: 0.4,
 }
 
+export const LEARNING_CONFIG_RANGES = {
+  learningRate: { min: 0.01, max: 0.5 },
+  discountFactor: { min: 0.5, max: 0.999 },
+  initialEpsilon: { min: 0.05, max: 1 },
+  minEpsilon: { min: 0.01, max: 0.5 },
+  epsilonDecay: { min: 0.99, max: 0.9999 },
+} as const
+
+export const REWARD_CONFIG_RANGES = {
+  eatSuccess: { min: 0, max: 50 },
+  wastedEnergy: { min: -10, max: 0 },
+  collision: { min: -20, max: 0 },
+  death: { min: -50, max: 0 },
+  efficientRest: { min: 0, max: 5 },
+} as const
+
 export const EPSILON_DECAY_OPTIONS = [0.995, 0.999, 0.9995] as const
+
+export function clampLearningConfig(config: LearningConfig): LearningConfig {
+  const initialEpsilon = clamp(
+    config.initialEpsilon,
+    LEARNING_CONFIG_RANGES.initialEpsilon.min,
+    LEARNING_CONFIG_RANGES.initialEpsilon.max,
+  )
+  const minEpsilon = clamp(
+    config.minEpsilon,
+    LEARNING_CONFIG_RANGES.minEpsilon.min,
+    Math.min(LEARNING_CONFIG_RANGES.minEpsilon.max, initialEpsilon),
+  )
+
+  return {
+    learningRate: clamp(
+      config.learningRate,
+      LEARNING_CONFIG_RANGES.learningRate.min,
+      LEARNING_CONFIG_RANGES.learningRate.max,
+    ),
+    discountFactor: clamp(
+      config.discountFactor,
+      LEARNING_CONFIG_RANGES.discountFactor.min,
+      LEARNING_CONFIG_RANGES.discountFactor.max,
+    ),
+    initialEpsilon,
+    minEpsilon,
+    epsilonDecay: clamp(
+      config.epsilonDecay,
+      LEARNING_CONFIG_RANGES.epsilonDecay.min,
+      LEARNING_CONFIG_RANGES.epsilonDecay.max,
+    ),
+  }
+}
+
+export function clampRewardConfig(config: RewardConfig): RewardConfig {
+  return {
+    eatSuccess: clamp(
+      config.eatSuccess,
+      REWARD_CONFIG_RANGES.eatSuccess.min,
+      REWARD_CONFIG_RANGES.eatSuccess.max,
+    ),
+    wastedEnergy: clamp(
+      config.wastedEnergy,
+      REWARD_CONFIG_RANGES.wastedEnergy.min,
+      REWARD_CONFIG_RANGES.wastedEnergy.max,
+    ),
+    collision: clamp(
+      config.collision,
+      REWARD_CONFIG_RANGES.collision.min,
+      REWARD_CONFIG_RANGES.collision.max,
+    ),
+    death: clamp(config.death, REWARD_CONFIG_RANGES.death.min, REWARD_CONFIG_RANGES.death.max),
+    efficientRest: clamp(
+      config.efficientRest,
+      REWARD_CONFIG_RANGES.efficientRest.min,
+      REWARD_CONFIG_RANGES.efficientRest.max,
+    ),
+  }
+}
 
 // MOVE, TURN_LEFT, TURN_RIGHT, EAT, REST
 export const EXPLORE_ACTION_WEIGHTS = [0.48, 0.16, 0.16, 0.1, 0.1] as const

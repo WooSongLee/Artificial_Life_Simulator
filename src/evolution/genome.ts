@@ -16,24 +16,27 @@ export function clampGenome(genome: Genome): Genome {
     energyEfficiency: clampGene('energyEfficiency', genome.energyEfficiency),
     learningRate: clampGene('learningRate', genome.learningRate),
     explorationRate: clampGene('explorationRate', genome.explorationRate),
+    libido: clampGene('libido', genome.libido),
+    lifespan: clampGene('lifespan', genome.lifespan),
   }
 }
 
-export function createRandomGenome(rng: Rng): Genome {
+export function createRandomGenome(rng: Rng, defaults?: Partial<Genome>): Genome {
   return clampGenome({
-    speed: randomInRange(rng, GENE_RANGES.speed.min, GENE_RANGES.speed.max),
-    vision: randomInRange(rng, GENE_RANGES.vision.min, GENE_RANGES.vision.max),
-    energyEfficiency: randomInRange(
-      rng,
-      GENE_RANGES.energyEfficiency.min,
-      GENE_RANGES.energyEfficiency.max,
-    ),
-    learningRate: randomInRange(rng, GENE_RANGES.learningRate.min, GENE_RANGES.learningRate.max),
-    explorationRate: randomInRange(
-      rng,
-      GENE_RANGES.explorationRate.min,
-      GENE_RANGES.explorationRate.max,
-    ),
+    speed: defaults?.speed ?? randomInRange(rng, GENE_RANGES.speed.min, GENE_RANGES.speed.max),
+    vision: defaults?.vision ?? randomInRange(rng, GENE_RANGES.vision.min, GENE_RANGES.vision.max),
+    energyEfficiency:
+      defaults?.energyEfficiency ??
+      randomInRange(rng, GENE_RANGES.energyEfficiency.min, GENE_RANGES.energyEfficiency.max),
+    learningRate:
+      defaults?.learningRate ??
+      randomInRange(rng, GENE_RANGES.learningRate.min, GENE_RANGES.learningRate.max),
+    explorationRate:
+      defaults?.explorationRate ??
+      randomInRange(rng, GENE_RANGES.explorationRate.min, GENE_RANGES.explorationRate.max),
+    libido: defaults?.libido ?? randomInRange(rng, GENE_RANGES.libido.min, GENE_RANGES.libido.max),
+    lifespan:
+      defaults?.lifespan ?? randomInRange(rng, GENE_RANGES.lifespan.min, GENE_RANGES.lifespan.max),
   })
 }
 

@@ -16,10 +16,18 @@ export interface WorldObject {
   rotation: number
 }
 
+export const RESOURCE_DISTRIBUTIONS = ['uniform', 'clustered', 'edge'] as const
+
+export type ResourceDistribution = (typeof RESOURCE_DISTRIBUTIONS)[number]
+
 export interface WorldConfig {
   size: number
   gridDivisions: number
   agentCount: number
+  initialFoodCount: number
+  foodRegenRate: number
+  obstacleDensity: number
+  resourceDistribution: ResourceDistribution
 }
 
 export interface WorldState {
@@ -29,6 +37,7 @@ export interface WorldState {
   foodSpawnCooldown: number
   generation: number
   generationStartTick: number
+  birthCount: number
 }
 
 export interface ObjectDefinition {

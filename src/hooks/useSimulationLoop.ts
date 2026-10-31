@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
-import { getMaxStepsPerFrame, SIMULATION_STEP_DT } from '../simulation/constants'
+import { FRAME_STEP_BUDGET_MS, getMaxStepsPerFrame, SIMULATION_STEP_DT } from '../simulation/constants'
 import { useSimulationStore } from '../store/useSimulationStore'
 
 export function useSimulationLoop() {
   const status = useSimulationStore((state) => state.status)
   const speed = useSimulationStore((state) => state.speed)
+  const hydrated = useSimulationStore((state) => state.hydrated)
 
   useEffect(() => {
-    if (status !== 'running') {
+    if (!hydrated || status !== 'running') {
       return
     }
 
@@ -21,20 +22,14 @@ export function useSimulationLoop() {
       previous = now
       accumulator += elapsed * speed
 
-      let steps = 0
-      while (accumulator >= SIMULATION_STEP_DT && steps < maxStepsPerFrame) {
-        const state = useSimulationStore.getState()
-        if (state.status !== 'running') {
+      const requested = Math.min(Math.floor(accumulator / SIMULATION_STEP_DT), maxStepsPerFrame)
+      if (requested > 0) {
+        const started = performance.now()
+        useSimulationStore.getState().advance(requested, FRAME_STEP_BUDGET_MS)
+        accumulator -= requested * SIMULATION_STEP_DT
+        if (requested === maxStepsPerFrame || performance.now() - started >= FRAME_STEP_BUDGET_MS) {
           accumulator = 0
-          break
         }
-        state.step(SIMULATION_STEP_DT)
-        accumulator -= SIMULATION_STEP_DT
-        steps += 1
-      }
-
-      if (steps === maxStepsPerFrame) {
-        accumulator = 0
       }
 
       frameId = window.requestAnimationFrame(loop)
@@ -42,5 +37,5 @@ export function useSimulationLoop() {
 
     frameId = window.requestAnimationFrame(loop)
     return () => window.cancelAnimationFrame(frameId)
-  }, [status, speed])
+  }, [hydrated, status, speed])
 }

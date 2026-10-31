@@ -5,10 +5,16 @@ export {
   DEFAULT_LEARNING_CONFIG,
   DEFAULT_REWARD_CONFIG,
   EPSILON_DECAY_OPTIONS,
+  LEARNING_CONFIG_RANGES,
+  REWARD_CONFIG_RANGES,
+  clampLearningConfig,
+  clampRewardConfig,
 } from './constants'
 export {
+  exportBrains,
   getAgentLearningView,
   getBrain,
+  importBrains,
   resetBrains,
   summarizeLearning,
   summarizeQTable,

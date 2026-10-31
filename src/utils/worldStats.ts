@@ -1,4 +1,5 @@
-import { generationElapsed, generationRemaining } from '../evolution/generations'
+import { countMatingPairs } from '../evolution/mating'
+import { generationElapsed } from '../evolution/generations'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
 import type { SimulationState, WorldStats } from '../types/simulation'
 import type { WorldObject } from '../types/world'
@@ -28,10 +29,14 @@ export function getWorldStats(state: SimulationState): WorldStats {
     ...summarizeAgents(state.world.agents),
     generation: state.world.generation,
     generationElapsed: generationElapsed(state.world.generationStartTick, state.tick),
-    generationRemaining: generationRemaining(
-      state.world.generationStartTick,
-      state.tick,
-      state.evolutionConfig.generationDuration,
-    ),
+    birthCount: state.world.birthCount,
+    matingCount: countMatingPairs(state.world.agents),
+    averageDesire: averageDesire(state.world.agents),
   }
+}
+
+function averageDesire(agents: SimulationState['world']['agents']): number {
+  const living = agents.filter((agent) => agent.alive)
+  if (living.length === 0) return 0
+  return living.reduce((sum, agent) => sum + agent.desire, 0) / living.length
 }

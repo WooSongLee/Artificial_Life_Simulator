@@ -1,28 +1,30 @@
-import { generationElapsed, generationRemaining } from '../evolution/generations'
+import { countMatingPairs } from '../evolution/mating'
+import { generationElapsed } from '../evolution/generations'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
-import { useSimulationStore } from '../store/useSimulationStore'
 import { summarizeAgents } from '../utils/agentStats'
 import { countObjects } from '../utils/worldStats'
+import { useThrottledStore } from './useThrottledStore'
 
 export function useWorldStats() {
-  const tick = useSimulationStore((state) => state.tick)
-  const speed = useSimulationStore((state) => state.speed)
-  const status = useSimulationStore((state) => state.status)
-  const objects = useSimulationStore((state) => state.world.objects)
-  const agents = useSimulationStore((state) => state.world.agents)
-  const generation = useSimulationStore((state) => state.world.generation)
-  const generationStartTick = useSimulationStore((state) => state.world.generationStartTick)
-  const generationDuration = useSimulationStore((state) => state.evolutionConfig.generationDuration)
+  return useThrottledStore((state) => {
+    const living = state.world.agents.filter((agent) => agent.alive)
+    const averageDesire =
+      living.length === 0
+        ? 0
+        : living.reduce((sum, agent) => sum + agent.desire, 0) / living.length
 
-  return {
-    tick,
-    speed,
-    status,
-    simulationTime: tick * SIMULATION_STEP_DT,
-    ...countObjects(objects),
-    ...summarizeAgents(agents),
-    generation,
-    generationElapsed: generationElapsed(generationStartTick, tick),
-    generationRemaining: generationRemaining(generationStartTick, tick, generationDuration),
-  }
+    return {
+      tick: state.tick,
+      speed: state.speed,
+      status: state.status,
+      simulationTime: state.tick * SIMULATION_STEP_DT,
+      ...countObjects(state.world.objects),
+      ...summarizeAgents(state.world.agents),
+      generation: state.world.generation,
+      generationElapsed: generationElapsed(state.world.generationStartTick, state.tick),
+      birthCount: state.world.birthCount,
+      matingCount: countMatingPairs(state.world.agents),
+      averageDesire,
+    }
+  })
 }

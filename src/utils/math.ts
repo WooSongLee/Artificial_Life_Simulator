@@ -1,4 +1,9 @@
+export function finiteNumber(value: number, fallback = 0): number {
+  return Number.isFinite(value) ? value : fallback
+}
+
 export function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, value))
 }
 
@@ -7,6 +12,7 @@ export function clampStat(value: number): number {
 }
 
 export function wrapAngle(angle: number): number {
+  if (!Number.isFinite(angle)) return 0
   const tau = Math.PI * 2
   return ((angle % tau) + tau) % tau
 }
