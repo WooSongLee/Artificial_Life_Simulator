@@ -1,3 +1,4 @@
+import { generationElapsed, generationRemaining } from '../evolution/generations'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
 import type { SimulationState, WorldStats } from '../types/simulation'
 import type { WorldObject } from '../types/world'
@@ -25,5 +26,12 @@ export function getWorldStats(state: SimulationState): WorldStats {
     simulationTime: state.tick * SIMULATION_STEP_DT,
     ...countObjects(state.world.objects),
     ...summarizeAgents(state.world.agents),
+    generation: state.world.generation,
+    generationElapsed: generationElapsed(state.world.generationStartTick, state.tick),
+    generationRemaining: generationRemaining(
+      state.world.generationStartTick,
+      state.tick,
+      state.evolutionConfig.generationDuration,
+    ),
   }
 }

@@ -3,14 +3,14 @@ import type { RewardConfig, RewardContext } from './types'
 
 export function isEfficientRest(context: RewardContext): boolean {
   if (context.action !== 'REST' || context.died) return false
-  if (context.hungerBefore >= URGENT_HUNGER && context.foodInEatRange) return false
+  if (context.hungerBefore >= URGENT_HUNGER) return false
   return context.energyBefore <= EFFICIENT_REST_ENERGY
 }
 
 export function isWastedEnergy(context: RewardContext): boolean {
   if (context.collided || context.ate || context.died) return false
-  if (context.action === 'MOVE_FORWARD') return true
   if (context.action === 'EAT' && !context.ate) return true
+  if (context.action === 'MOVE_FORWARD' && context.foodInEatRange) return true
   return false
 }
 

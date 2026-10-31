@@ -1,12 +1,27 @@
-import { SIMULATION_STEP_DT } from '../simulation/constants'
+import { energyDrainMultiplier } from '../simulation/agentSystem'
+import {
+  DEFAULT_WORLD_CONFIG,
+  FOOD_EAT_RADIUS,
+  LEARNING_COMPARISON_WINDOW,
+  LEARNING_HISTORY_MAX_POINTS,
+  LEARNING_HISTORY_SAMPLE_TICKS,
+  SIMULATION_STEP_DT,
+} from '../simulation/constants'
 import { stepSimulation } from '../simulation/engine'
+import {
+  compareLearningWindows,
+  createEmptyLearningHistory,
+  createLearningHistory,
+  recordLearningHistory,
+} from '../simulation/metrics'
 import { createInitialWorld } from '../simulation/worldFactory'
+import { isPopulationExtinct } from '../utils/agentStats'
 import { mulberry32 } from '../utils/random'
 import { getBrain, resetBrains } from './brain'
 import { DEFAULT_LEARNING_CONFIG, DEFAULT_REWARD_CONFIG } from './constants'
 import { applyLearningUpdate } from './controller'
 import { encodeObservation, observeAgent } from './observation'
-import { selectEpsilonGreedy, updateQValue } from './qLearning'
+import { pickWeightedAction, selectEpsilonGreedy, updateQValue } from './qLearning'
 import { computeReward } from './rewards'
 
 function assert(condition: boolean, message: string): void {
@@ -63,8 +78,50 @@ function rewardsMatchEvents(): void {
         foodInEatRange: false,
       },
       DEFAULT_REWARD_CONFIG,
+    ) === 0,
+    'searching movement must not take a reward penalty',
+  )
+  assert(
+    computeReward(
+      {
+        action: 'MOVE_FORWARD',
+        ate: false,
+        collided: false,
+        died: false,
+        energyBefore: 80,
+        hungerBefore: 10,
+        foodInEatRange: true,
+      },
+      DEFAULT_REWARD_CONFIG,
     ) === -1,
-    'unnecessary movement must award -1',
+    'leaving food in eat range must award -1',
+  )
+  assert(
+    computeReward(
+      {
+        action: 'TURN_LEFT',
+        ate: false,
+        collided: false,
+        died: false,
+        energyBefore: 80,
+        hungerBefore: 10,
+        foodInEatRange: false,
+      },
+      DEFAULT_REWARD_CONFIG,
+    ) === 0,
+    'turning must not earn a reward just for spinning',
+  )
+  assert(
+    energyDrainMultiplier('MOVE_FORWARD') > energyDrainMultiplier('TURN_LEFT'),
+    'forward movement must consume more energy than turning',
+  )
+  assert(
+    energyDrainMultiplier('TURN_LEFT') > energyDrainMultiplier('REST'),
+    'turning must consume more energy than rest',
+  )
+  assert(
+    pickWeightedAction([0.48, 0.16, 0.16, 0.1, 0.1], () => 0.1) === 'MOVE_FORWARD',
+    'exploration prior must prefer forward movement',
   )
   assert(
     computeReward(
@@ -140,7 +197,7 @@ function learningOffDoesNotWriteQTable(): void {
   assert(brain !== undefined, 'brain should exist')
   assert(brain?.qTable.size === 0, 'learning off must not insert Q-table entries')
   assert(brain?.totalSteps === 0, 'learning off must not increment learning steps')
-  assert(brain?.epsilon === DEFAULT_LEARNING_CONFIG.initialEpsilon, 'learning off must not decay epsilon')
+  assert(brain?.epsilon === agent.genome.explorationRate, 'learning off must not decay epsilon')
 }
 
 function simulationUpdatesAndFreezes(): void {
@@ -218,6 +275,133 @@ function simulationUpdatesAndFreezes(): void {
   })
 }
 
+function nearbyFoodIsConsumedWithoutEatAction(): void {
+  const world = createInitialWorld({
+    ...DEFAULT_WORLD_CONFIG,
+    agentCount: 1,
+  })
+  const agent = world.agents[0]
+  const food = world.objects.find((object) => object.type === 'food')
+  if (!agent || !food) {
+    throw new Error('expected an agent and food')
+  }
+
+  const placed = {
+    ...agent,
+    position: { x: food.position.x + FOOD_EAT_RADIUS * 0.4, z: food.position.z },
+    energy: 40,
+    hunger: 70,
+  }
+
+  let calls = 0
+  const snapshot = stepSimulation(
+    { tick: 0, world: { ...world, agents: [placed] } },
+    SIMULATION_STEP_DT,
+    {
+      learningEnabled: true,
+      learningConfig: DEFAULT_LEARNING_CONFIG,
+      rewardConfig: DEFAULT_REWARD_CONFIG,
+      rng: () => {
+        calls += 1
+        if (calls === 1) return 0
+        if (calls === 2) return 0.95
+        return 0.5
+      },
+    },
+  )
+
+  const nextAgent = snapshot.world.agents[0]
+  assert(nextAgent !== undefined, 'agent should still exist after contact eat')
+  assert(nextAgent?.lastAction === 'REST', `expected REST, got ${nextAgent?.lastAction}`)
+  assert(nextAgent !== undefined && nextAgent.energy > 40, 'contact eat must restore energy')
+  assert(
+    snapshot.world.objects.every((object) => object.id !== food.id),
+    'food next to an agent must be consumed',
+  )
+}
+
+function earlyLearningDoesNotWipeOut(): void {
+  const world = createInitialWorld()
+  resetBrains(world.agents, DEFAULT_LEARNING_CONFIG)
+
+  let snapshot = { tick: 0, world }
+  const learnContext = {
+    learningEnabled: true,
+    learningConfig: DEFAULT_LEARNING_CONFIG,
+    rewardConfig: DEFAULT_REWARD_CONFIG,
+    rng: mulberry32(7),
+  }
+
+  for (let i = 0; i < 90 * 20; i += 1) {
+    snapshot = stepSimulation(snapshot, SIMULATION_STEP_DT, learnContext)
+  }
+
+  const aliveCount = snapshot.world.agents.filter((agent) => agent.alive).length
+  assert(!isPopulationExtinct(snapshot.world.agents), 'early learning must not wipe out the population')
+  assert(aliveCount >= 16, `expected at least 16 survivors after 90s, got ${aliveCount}`)
+}
+
+function learningHistoryIsCappedAndHonest(): void {
+  const world = createInitialWorld({
+    ...DEFAULT_WORLD_CONFIG,
+    agentCount: 4,
+  })
+  resetBrains(world.agents, DEFAULT_LEARNING_CONFIG)
+
+  let history = createLearningHistory(0, world.agents, true)
+  assert(history.series.length === 1, 'reset/create should record a real baseline sample')
+  assert(compareLearningWindows(history) === null, 'comparison must wait for non-overlapping windows')
+
+  const lastTick = LEARNING_HISTORY_SAMPLE_TICKS * (LEARNING_HISTORY_MAX_POINTS + 8)
+  for (let tick = LEARNING_HISTORY_SAMPLE_TICKS; tick <= lastTick; tick += LEARNING_HISTORY_SAMPLE_TICKS) {
+    history = recordLearningHistory(history, tick, world.agents, true)
+  }
+
+  assert(
+    history.series.length === LEARNING_HISTORY_MAX_POINTS,
+    `history must stay capped at ${LEARNING_HISTORY_MAX_POINTS}, got ${history.series.length}`,
+  )
+  assert(
+    history.earlySeries.length === LEARNING_COMPARISON_WINDOW,
+    'early window must freeze after the first comparison window',
+  )
+
+  const sameTick = recordLearningHistory(
+    history,
+    history.series[history.series.length - 1]?.tick ?? 0,
+    world.agents,
+    true,
+  )
+  assert(sameTick === history, 'the same tick must not append another sample')
+
+  const skipped = recordLearningHistory(history, lastTick + 1, world.agents, true)
+  assert(skipped === history, 'off-interval ticks must not append samples')
+
+  const comparison = compareLearningWindows(history)
+  assert(comparison !== null, 'non-overlapping early/current windows should produce a comparison')
+  assert(
+    comparison !== null && comparison.current.fromTime > comparison.early.toTime,
+    'current window must start after the frozen early window',
+  )
+}
+
+function emptyHistoryDoesNotInventImprovement(): void {
+  const history = createEmptyLearningHistory()
+  assert(compareLearningWindows(history) === null, 'empty history must not invent a comparison')
+}
+
+function extinctPopulationIsDetected(): void {
+  const world = createInitialWorld({
+    ...DEFAULT_WORLD_CONFIG,
+    agentCount: 2,
+  })
+  assert(!isPopulationExtinct(world.agents), 'fresh world must have living agents')
+  assert(
+    isPopulationExtinct(world.agents.map((agent) => ({ ...agent, alive: false, health: 0 }))),
+    'all-dead population must be extinct',
+  )
+}
+
 export function runLearningChecks(): void {
   encodeIsDeterministic()
   qUpdateMatchesFormula()
@@ -225,6 +409,11 @@ export function runLearningChecks(): void {
   epsilonGreedyExploresAndExploits()
   learningOffDoesNotWriteQTable()
   simulationUpdatesAndFreezes()
+  nearbyFoodIsConsumedWithoutEatAction()
+  earlyLearningDoesNotWipeOut()
+  learningHistoryIsCappedAndHonest()
+  emptyHistoryDoesNotInventImprovement()
+  extinctPopulationIsDetected()
 }
 
 runLearningChecks()

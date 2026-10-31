@@ -1,6 +1,7 @@
 import { Agents } from './Agents'
 import { AgentTrail } from './AgentTrail'
 import { CameraRig } from './CameraRig'
+import { FoodSeekPath } from './FoodSeekPath'
 import { Terrain } from './Terrain'
 import { WorldObjects } from './WorldObjects'
 
@@ -28,6 +29,7 @@ export function WorldScene() {
       <Terrain />
       <WorldObjects />
       <AgentTrail />
+      <FoodSeekPath />
       <Agents />
     </>
   )

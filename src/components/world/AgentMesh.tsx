@@ -1,7 +1,8 @@
-import { Html, Outlines } from '@react-three/drei'
+import { Billboard, Html, Outlines, Text } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import { useSimulationStore } from '../../store/useSimulationStore'
-import { ACTION_LABELS } from '../../learning/constants'
+import { ACTION_COLORS, ACTION_LABELS, ACTION_MARKS } from '../../learning/constants'
+import type { AgentAction } from '../../learning/types'
 import { shortAgentId } from '../../utils/format'
 import type { Agent } from '../../types/agent'
 
@@ -82,6 +83,28 @@ function SelectionRing() {
   )
 }
 
+function ActionMarker({ action }: { action: AgentAction }) {
+  const color = ACTION_COLORS[action]
+
+  return (
+    <Billboard position={[0, 1.42, 0]} follow raycast={() => null}>
+      <mesh>
+        <circleGeometry args={[0.16, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      <Text
+        position={[0, 0, 0.01]}
+        fontSize={0.2}
+        color="#0c1118"
+        anchorX="center"
+        anchorY="middle"
+      >
+        {ACTION_MARKS[action]}
+      </Text>
+    </Billboard>
+  )
+}
+
 function VisionRange({ radius }: { radius: number }) {
   return (
     <group>
@@ -100,6 +123,8 @@ function VisionRange({ radius }: { radius: number }) {
 export function AgentMesh({ agent }: AgentMeshProps) {
   const selected = useSimulationStore((state) => state.selectedObjectId === agent.id)
   const selectObject = useSimulationStore((state) => state.selectObject)
+  const showVisionRange = useSimulationStore((state) => state.settings.showVisionRange)
+  const showActionMarkers = useSimulationStore((state) => state.settings.showActionMarkers)
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()
@@ -112,7 +137,7 @@ export function AgentMesh({ agent }: AgentMeshProps) {
         <cylinderGeometry args={[0.7, 0.7, 1.4, 10]} />
         <meshBasicMaterial />
       </mesh>
-      {selected ? <VisionRange radius={agent.vision} /> : null}
+      {selected && showVisionRange ? <VisionRange radius={agent.vision} /> : null}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
         <circleGeometry args={[0.3, 16]} />
         <meshBasicMaterial color="#000000" transparent opacity={agent.alive ? 0.22 : 0.12} />
@@ -124,9 +149,12 @@ export function AgentMesh({ agent }: AgentMeshProps) {
         <AgentFigure agent={agent} selected={selected} />
       </group>
       {selected ? <SelectionRing /> : null}
+      {agent.alive && showActionMarkers && agent.lastAction ? (
+        <ActionMarker action={agent.lastAction} />
+      ) : null}
       {selected ? (
         <Html
-          position={[0, agent.alive ? 1.58 : 0.72, 0]}
+          position={[0, agent.alive ? (showActionMarkers ? 1.92 : 1.58) : 0.72, 0]}
           center
           distanceFactor={18}
           pointerEvents="none"

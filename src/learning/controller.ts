@@ -33,7 +33,7 @@ export const DEFAULT_LEARNING_CONTEXT: LearningStepContext = {
 export function decideAction(agent: Agent, world: WorldState, context: LearningStepContext) {
   const observation = observeAgent(agent, world)
   const stateKey = encodeObservation(observation)
-  const brain = ensureBrain(agent.id, context.learningConfig)
+  const brain = ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate)
   const qValues = peekQValues(brain.qTable, stateKey)
   const selection = selectEpsilonGreedy(qValues, brain.epsilon, context.rng)
   return { observation, stateKey, brain, selection }
@@ -67,7 +67,7 @@ export function applyLearningUpdate(
     return reward
   }
 
-  const brain = ensureBrain(agent.id, context.learningConfig)
+  const brain = ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate)
   const qValues = getOrCreateQValues(brain.qTable, previousStateKey)
   const index = actionIndex(outcome.action)
   const nextMax = outcome.died ? 0 : maxQValue(peekQValues(brain.qTable, encodeObservation(observeAgent(agent, world))))
@@ -76,7 +76,7 @@ export function applyLearningUpdate(
     qValues[index] ?? 0,
     reward,
     nextMax,
-    context.learningConfig.learningRate,
+    agent.genome.learningRate,
     context.learningConfig.discountFactor,
   )
 

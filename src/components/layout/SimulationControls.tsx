@@ -11,14 +11,16 @@ export function SimulationControls() {
   const reset = useSimulationStore((state) => state.reset)
   const setSpeed = useSimulationStore((state) => state.setSpeed)
   const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const generation = useSimulationStore((state) => state.world.generation)
 
   const isRunning = status === 'running'
+  const isEnded = status === 'ended'
   const simulationTime = formatSimulationTime(getSimulationTime(tick))
 
   return (
-    <footer className="flex h-14 shrink-0 items-center justify-between gap-4 border-t border-lab-border bg-lab-panel px-4">
+    <footer className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-t border-lab-border bg-lab-panel px-4 py-2">
       <div className="flex items-center gap-2">
-        <ControlButton onClick={play} active={isRunning} disabled={isRunning}>
+        <ControlButton onClick={play} active={isRunning} disabled={isRunning || isEnded}>
           Play
         </ControlButton>
         <ControlButton onClick={pause} active={status === 'paused'} disabled={!isRunning}>
@@ -57,6 +59,12 @@ export function SimulationControls() {
         </div>
         <div>
           <span className="mr-2 text-[11px] tracking-[0.14em] text-lab-muted">
+            GEN
+          </span>
+          {generation}
+        </div>
+        <div>
+          <span className="mr-2 text-[11px] tracking-[0.14em] text-lab-muted">
             LEARN
           </span>
           <span className={learningEnabled ? 'text-lab-accent' : 'text-lab-danger'}>
@@ -84,7 +92,7 @@ function ControlButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`h-8 min-w-16 border px-3 text-[13px] transition-colors ${
+      className={`h-8 min-w-12 border px-2.5 text-[13px] transition-colors ${
         active
           ? 'border-lab-accent bg-lab-accent/15 text-lab-accent'
           : 'border-lab-border bg-lab-elevated text-lab-text hover:border-lab-accent/40'

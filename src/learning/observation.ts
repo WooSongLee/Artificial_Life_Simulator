@@ -3,7 +3,7 @@ import { collidesWithObstacles, isInsideWorld } from '../simulation/spatial'
 import type { Agent } from '../types/agent'
 import type { WorldObject, WorldState } from '../types/world'
 import { distanceSq, shortestAngleDelta } from '../utils/math'
-import { FOOD_DISTANCE_CLOSE, STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX } from './constants'
+import { STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX } from './constants'
 import type {
   EnergyBand,
   FoodDirection,
@@ -64,7 +64,7 @@ export function observeFoodDistance(agent: Agent, food: WorldObject | null): Foo
   if (!food) return 'out'
 
   const dist = Math.hypot(food.position.x - agent.position.x, food.position.z - agent.position.z)
-  if (dist <= FOOD_DISTANCE_CLOSE) return 'close'
+  if (dist <= FOOD_EAT_RADIUS) return 'close'
   if (dist <= agent.vision * 0.5) return 'mid'
   if (dist <= agent.vision) return 'far'
   return 'out'

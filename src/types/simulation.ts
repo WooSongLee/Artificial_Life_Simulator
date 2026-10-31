@@ -1,8 +1,9 @@
+import type { EvolutionConfig, GenerationRecord } from '../evolution/types'
 import type { LearningConfig } from '../learning/types'
 import type { AgentStats, AgentTrail } from './agent'
 import type { WorldObjectType, WorldState } from './world'
 
-export type SimulationStatus = 'idle' | 'running' | 'paused'
+export type SimulationStatus = 'idle' | 'running' | 'paused' | 'ended'
 
 export interface ViewerSettings {
   showGrid: boolean
@@ -10,6 +11,28 @@ export interface ViewerSettings {
   showRocks: boolean
   showFood: boolean
   showAgents: boolean
+  showAgentTrails: boolean
+  showVisionRange: boolean
+  showFoodSeek: boolean
+  showActionMarkers: boolean
+}
+
+export interface LearningHistoryPoint {
+  tick: number
+  time: number
+  averageReward: number
+  averageSurvivalTime: number
+  averageEnergy: number
+  learningSteps: number
+  explorationRate: number
+  populationSize: number
+  hasLearningSamples: boolean
+  hasSurvivalSamples: boolean
+}
+
+export interface LearningHistoryState {
+  series: LearningHistoryPoint[]
+  earlySeries: LearningHistoryPoint[]
 }
 
 export interface WorldStats {
@@ -27,6 +50,9 @@ export interface WorldStats {
   averageEnergy: number
   averageHealth: number
   averageLifespan: number
+  generation: number
+  generationElapsed: number
+  generationRemaining: number
 }
 
 export interface SimulationSnapshot {
@@ -41,10 +67,13 @@ export interface SimulationState {
   world: WorldState
   selectedObjectId: string | null
   agentTrails: Record<string, AgentTrail>
+  learningHistory: LearningHistoryState
+  generationHistory: GenerationRecord[]
   settings: ViewerSettings
   cameraResetToken: number
   learningEnabled: boolean
   learningConfig: LearningConfig
+  evolutionConfig: EvolutionConfig
 }
 
 export interface SimulationActions {
@@ -56,7 +85,10 @@ export interface SimulationActions {
   selectObject: (id: string | null) => void
   setSetting: <K extends keyof ViewerSettings>(key: K, value: ViewerSettings[K]) => void
   setLearningEnabled: (enabled: boolean) => void
-  setEpsilonDecay: (decay: number) => void
+  setInheritQTable: (enabled: boolean) => void
+  setPopulationLimit: (limit: number) => void
+  setGenerationDuration: (seconds: number) => void
+  setAgentCount: (count: number) => void
   addObject: (type: WorldObjectType) => void
   resetCamera: () => void
 }

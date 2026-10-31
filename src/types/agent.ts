@@ -1,3 +1,4 @@
+import type { Genome, GenomeGene } from '../evolution/types'
 import type { AgentAction } from '../learning/types'
 
 export interface AgentPosition {
@@ -16,6 +17,11 @@ export interface Agent {
   vision: number
   age: number
   alive: boolean
+  generation: number
+  parentIds: [string, string] | null
+  inheritParentId: string | null
+  genome: Genome
+  mutatedGenes: GenomeGene[]
   turnRate: number
   turnBias: number
   wanderTimer: number
@@ -25,7 +31,13 @@ export interface Agent {
   lastStateKey: string | null
 }
 
-export type AgentTrail = AgentPosition[]
+export interface AgentTrailPoint {
+  x: number
+  z: number
+  action: AgentAction | null
+}
+
+export type AgentTrail = AgentTrailPoint[]
 
 export interface AgentStats {
   totalAgents: number

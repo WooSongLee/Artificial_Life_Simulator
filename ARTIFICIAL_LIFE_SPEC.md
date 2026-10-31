@@ -12,7 +12,7 @@
 |---|---|
 | 프로젝트명 | Artificial Life Simulator |
 | 문서 파일 | `ARTIFICIAL_LIFE_SPEC.md` |
-| 문서 버전 | 0.3.0 |
+| 문서 버전 | 0.10.0 |
 | 문서 상태 | 초기 기준 명세 (Draft) |
 | 기본 제품 형태 | 브라우저에서 실행되는 3D 인공 생태계 시뮬레이터 |
 | 기본 사용자 | 개발자 본인 및 시뮬레이션을 관찰·실험하는 사용자 |
@@ -22,6 +22,14 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |---|---|---|
+| 0.10.0 | 2026-10-31 | STEP 6 진화 시스템. Genome, 세대 단위 번식, 돌연변이, 세대 통계, Q-Table 상속(기본 꺼짐), Evolution 탭을 추가한다. |
+| 0.9.1 | 2026-10-31 | 분석 화면을 Simulation 탭과 Learning 탭으로 분리한다. Simulation은 생태계 통계, Learning은 학습 지표·차트·비교를 담당한다. |
+| 0.9.0 | 2026-10-31 | 우측 정보 패널을 제거하고 Cursor형 탭 워크스페이스로 분리한다. 시뮬레이션 속도에 100x/1000x를 추가한다. 고속은 프레임당 스텝 상한(최대 400)을 두어 프레임이 멈추지 않게 한다. |
+| 0.8.0 | 2026-10-31 | STEP 5 학습 대시보드. 차트는 1초 샘플·최근 180개만 유지하고, 초기 30초와 최근 30초를 겹치지 않을 때만 비교한다. 차트는 Recharts 없이 실제 기록 SVG로 그린다. 3D에 행동 표시·먹이 탐색 경로 토글을 추가한다. |
+| 0.7.0 | 2026-10-31 | 학습 초기 수명이 너무 짧아 대사·먹이·이동 배율을 다시 맞춘다. 이동은 기본의 1.4배로 에너지를 쓰고, 목표 먹이는 개체 수 × 1.6(최소 12)이다. 초기 2분은 대부분 생존하고, 첫 사망은 대략 3–4분에 난다. |
+| 0.6.0 | 2026-10-31 | 이동 비용은 보상 페널티가 아니라 실제 에너지 소모로 둔다. `MOVE_FORWARD`는 기본 대사의 1.8배로 에너지를 쓴다. 탐색 이동에는 보상 페널티를 주지 않는다. 무작위 탐험은 전진에 가중치를 둔다. |
+| 0.5.0 | 2026-10-31 | 좌측 설정에서 Learning Rate, Discount, Min Epsilon, Epsilon Decay를 숨긴다. 섭취 가능 거리 안의 먹이는 행동과 관계없이 섭취한다. 생존 개체가 없으면 `ended` 상태와 종료 오버레이를 표시한다. |
+| 0.4.0 | 2026-10-31 | 학습 시간을 확보하도록 대사를 완화하고, 좌측 설정에서 개체 수(1–50)를 조절한다. 목표 먹이 수는 개체 수 × 1.4(최소 10, 최대 48)로 맞춘다. |
 | 0.3.0 | 2026-10-31 | STEP 4 Tabular Q-Learning 구현. 섭취는 EAT 행동으로만 수행하고, 에이전트별 Q-Table은 React 렌더 상태 밖에 둔다. Epsilon은 학습 스텝마다 곱셈 감쇠하며 기본 Decay는 0.999이다. |
 | 0.2.0 | 2026-10-31 | STEP 1–3 구현 상태를 반영. 시뮬레이션 속도 옵션을 1x/2x/5x/10x로 고정하고, Simulation Time은 `tick × SIMULATION_STEP_DT`로 계산하며, 선택 개체 이동 경로는 최근 80지점만 유지한다. |
 | 0.1.0 | 2026-10-31 | 기존 8단계 개발 계획을 통합한 최초 명세 작성 |
@@ -61,9 +69,9 @@
 - 에이전트 선택 및 상태 확인
 - Q-Learning 기반의 실제 자율 행동 학습
 - 학습 및 생존 통계 시각화
+- 세대 단위 번식, 유전, 돌연변이 및 세대 비교
 
 ### 후속 목표
-- 번식, 유전, 돌연변이 및 세대 비교
 - 사용자 정의 실험 설정
 - 실험 저장·불러오기·내보내기·가져오기
 - 다수 에이전트 및 장시간 시뮬레이션 성능 개선
@@ -87,11 +95,10 @@
 
 | 영역 | 역할 |
 |---|---|
-| 중앙 | 3D World Viewer. 월드, 자원, 장애물, 에이전트 표시 |
-| 좌측 패널 | 월드 생성 및 실험 설정 |
-| 우측 패널 | 전체 통계 또는 선택된 에이전트 상세 정보 |
-| 하단 컨트롤 | Play, Pause, Reset, 시뮬레이션 속도 및 시간 |
-| 분석 화면/탭 | 학습 곡선, 세대 비교 및 실험 결과 |
+| 중앙 | Cursor형 탭 워크스페이스. World는 3D Viewer와 전멸 오버레이, Simulation은 생태계 통계, Learning은 학습 분석, Evolution은 세대 통계 |
+| 좌측 패널 | 월드 생성 및 실험 설정. 학습 하이퍼파라미터는 노출하지 않음 |
+| 하단 컨트롤 | Play, Pause, Reset, 1x/2x/5x/10x/100x/1000x 및 시간. 종료 상태에서는 Play 비활성 |
+| 분석 화면/탭 | Simulation, Learning, Evolution 탭. 학습 지표는 Learning, 세대 비교는 Evolution에 둔다. 개체를 선택하면 해당 탭에서 상세를 표시한다. |
 
 ## 2.2 시각 디자인
 
@@ -118,7 +125,7 @@
 4. 시뮬레이션을 시작한다.
 5. 개체들이 이동하고 자원을 탐색하며 학습한다.
 6. 사용자가 특정 개체를 클릭해 상태와 행동 기록을 확인한다.
-7. 분석 패널에서 생존 및 학습 결과를 확인한다.
+7. Simulation 탭에서 생존 통계를, Learning 탭에서 학습 결과를 확인한다.
 8. 실험을 저장하거나 다른 조건으로 새 실험을 진행한다.
 
 ---
@@ -135,7 +142,7 @@
 | 3D Helpers | @react-three/drei | 카메라, 컨트롤 및 3D 편의 기능 |
 | Styling | Tailwind CSS | UI 스타일링 |
 | State | Zustand | UI 및 저빈도 애플리케이션 상태 |
-| Charts | Recharts 또는 가벼운 React 차트 라이브러리 | 학습 및 생존 통계 |
+| Charts | 프로젝트 내부 SVG LineChart | 학습 및 생존 통계. Recharts는 설치하지 않음 |
 | Persistence | IndexedDB | 실험 및 시뮬레이션 데이터 저장 |
 | Testing | Vitest + React Testing Library | 단위 및 UI 테스트 |
 | E2E (필요 시) | Playwright | 주요 사용자 흐름 검증 |
@@ -258,7 +265,7 @@ src/
 - 생성/재생성 시간 또는 상태
 - 섭취 가능 여부
 
-에이전트가 섭취 가능한 거리 안에 접근하고 EAT 행동을 선택했을 때만 먹이를 획득한다. 먹이가 없는데 먹기 행동을 했을 때는 실제 섭취 보상을 지급하지 않는다. 접근만으로 자동 섭취하지 않는다.
+에이전트가 섭취 가능 거리(`FOOD_EAT_RADIUS`, 1.6) 안에 있으면 현재 행동과 관계없이 그 틱에서 먹이를 섭취한다. `EAT`는 같은 섭취를 명시적으로 시도하는 행동이다. 섭취 가능 거리 밖에 있는데 `EAT`를 선택하면 실제 섭취 보상을 지급하지 않는다.
 
 ## 4.4 Obstacle
 
@@ -271,16 +278,17 @@ src/
 
 ## 4.5 Genome (진화 단계)
 
-유전 정보는 학습된 Q-Table과 별도 관리한다.
+유전 정보는 학습된 Q-Table과 별도 관리한다. 에이전트의 `speed`와 `vision`은 Genome에서 복사한다.
 
-초기 유전 특성:
-- Speed
-- Vision
-- Energy Efficiency
-- Learning Rate
-- Exploration Profile 또는 초기 Epsilon 관련 파라미터
+| 유전자 | 범위 | 시뮬레이션 효과 |
+|---|---|---|
+| Speed | 1.35–2.75 | 이동 거리 |
+| Vision | 6.5–13 | 먹이 탐지 범위 |
+| Energy Efficiency | 0.85–1.20 | 에너지 소모 ÷ 이 값 |
+| Learning Rate | 0.05–0.25 | 해당 개체의 Q-update α |
+| Exploration Rate | 0.50–1.00 | 해당 개체의 초기 epsilon |
 
-각 특성은 허용 가능한 최소·최대 범위를 가진다. 돌연변이 후 범위를 벗어나면 clamp 또는 재표본화한다.
+각 특성은 허용 가능한 최소·최대 범위를 가진다. 돌연변이 후 범위를 벗어나면 clamp한다. 실험 설정의 Learning Rate/Initial Epsilon은 기본 참고값이며, 실제 학습 갱신과 초기 탐험은 Genome을 쓴다.
 
 ---
 
@@ -292,17 +300,25 @@ src/
 
 | 설정 | 초기값 |
 |---|---:|
-| World Size | 40 × 40 월드 단위 |
-| Initial Population | 20 |
-| Initial Food Count | 40 |
-| Agent Energy | 100 |
-| Agent Health | 100 |
+| World Size | 48 × 48 월드 단위 |
+| Initial Population | 20 (설정에서 1–50 조절) |
+| Initial / Target Food | `round(개체 수 × 1.6)`, 범위 12–48. 기본 20개체면 32 |
+| Agent Energy | 82–100에서 생성 |
+| Agent Hunger | 4–18에서 생성 |
+| Agent Health | 92–100에서 생성 |
 | Simulation Speed | 1x (옵션: 1x, 2x, 5x, 10x) |
-| Maximum Population | 100 (초기 안전 제한) |
-| Agent Vision | 6 월드 단위 |
-| Agent Speed | 2 월드 단위/초 (기준값) |
+| Maximum Population | 50 (UI 및 생성 제한) |
+| Agent Vision | 6.5–13 월드 단위 |
+| Agent Speed | 1.35–2.75 월드 단위/초 |
 
 이 수치들은 생태계 밸런스를 검증하기 위한 임시 기본값이다. 과학적·현실적 상수가 아니다.
+
+개체 수 변경 규칙:
+- 시뮬레이션이 아직 시작되지 않았으면(`idle`, tick 0) 해당 수로 월드를 다시 생성한다.
+- 실행 중이거나 일시정지 상태면 생존 개체를 우선 유지한 채 개체를 추가하거나 줄인다. 줄일 때는 사망 개체부터 제거한다.
+- Reset은 현재 설정된 개체 수로 새 월드를 만든다.
+- 새로 추가된 개체는 빈 Q-Table을 받는다. 제거된 개체의 학습 상태는 삭제한다.
+- 시뮬레이션 상태는 `idle` | `running` | `paused` | `ended`다. `ended`는 생존 개체가 없을 때만 들어간다.
 
 ## 5.2 이동 및 경계
 
@@ -316,14 +332,31 @@ src/
 ## 5.3 생존 및 자원
 
 - 시간이 흐르면 허기가 증가한다.
-- 이동과 기본 생존에 에너지가 소모된다.
+- 기본 생존에 에너지가 소모된다. `MOVE_FORWARD`는 기본 에너지 소모를 1.4배로 늘린다. REST는 기본 에너지 소모를 0.4배로 줄인다. 회전과 EAT는 기본 소모만 적용한다.
 - 먹이를 섭취하면 에너지가 회복되고 허기가 감소한다.
-- 에너지가 낮거나 허기가 임계값을 넘는 상태가 지속되면 체력이 감소한다.
+- 에너지가 위험 임계값 이하로 떨어지면 체력이 감소한다. 허기가 높으면 에너지가 추가로 소모된다.
 - 체력이 0 이하가 되면 사망한다.
 - 사망한 에이전트는 더 이상 이동, 섭취, 학습, 번식 행동을 수행하지 않는다.
 - 사망 개체는 통계에는 남길 수 있으나, 활성 시뮬레이션 업데이트와 렌더링 리소스에서 적절히 분리한다.
+- 생존 개체가 0이 되면 시뮬레이션 상태는 `ended`가 된다. 월드 뷰어에 종료 오버레이를 띄우고 Play를 막는다. Reset으로만 다시 시작한다.
 
-수치와 임계값은 한 곳의 설정 객체 또는 밸런스 설정으로 관리한다. 여러 컴포넌트에 하드코딩하지 않는다.
+현재 밸런스(학습 초기 탐험이 끝나기 전에 전멸하지 않도록 설정):
+
+| 항목 | 값 | 의미 |
+|---|---:|---|
+| Energy drain | 0.7 /초 | 기본 에너지 소모 (회전, EAT) |
+| Move energy drain | 0.98 /초 | `MOVE_FORWARD` = 기본 × 1.4 |
+| Hunger gain | 0.85 /초 | 허기 증가 |
+| Hungry extra drain | 0.28 /초 | 허기 ≥ 82일 때 추가 에너지 소모 |
+| Energy critical | 10 | 이 이하에서 체력 감소 시작 |
+| Health drain | 최대 1.35 /초 | 에너지 0일 때 최대 |
+| Health regen | 1.6 /초 | 에너지 > 60이고 허기 < 40일 때 |
+| Food restore | 에너지 +46, 허기 −56 | EAT 성공 시 |
+| Food spawn interval | 0.7초 | 목표 먹이 수 미만일 때 |
+
+학습 초기 2분은 대부분 생존한다. 첫 사망은 대략 3–4분에 난다. 먹이를 거의 못 찾으면 그 전후로 죽는다. 이는 학습을 꾸며내기 위한 무제한 생존이 아니라, Q-Table이 갱신될 시간을 주기 위한 밸런스다.
+
+수치와 임계값은 `src/simulation/constants.ts`에서 관리한다. 여러 컴포넌트에 하드코딩하지 않는다.
 
 ## 5.4 행동 정책 단계
 
@@ -354,9 +387,9 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 | Discount Factor (γ) | 0.95 |
 | Initial Epsilon | 1.0 |
 | Minimum Epsilon | 0.05 |
-| Epsilon Decay | 설정 가능, 기본값 0.999. 학습 스텝마다 `epsilon ← max(minEpsilon, epsilon × decay)` |
+| Epsilon Decay | 기본값 0.999. 학습 스텝마다 `epsilon ← max(minEpsilon, epsilon × decay)` |
 
-파라미터는 코드에 흩어져 있지 않고 설정 객체에서 관리한다.
+실험 설정의 Learning Rate와 Initial Epsilon은 기본 참고값이다. 실제 Q-update α는 개체의 Genome Learning Rate를 쓰고, 새 개체의 초기 epsilon은 Genome Exploration Rate를 쓴다. 좌측 설정 패널에서는 Learning Rate, Discount, Min Epsilon, Epsilon Decay를 바꾸지 못한다. 학습 on/off만 제공한다.
 
 ## 6.2 Observation (관찰 상태)
 
@@ -365,7 +398,7 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 - Energy Level: 낮음 / 보통 / 높음 (0–33 / 34–66 / 67–100)
 - Hunger Level: 낮음 / 보통 / 높음 (0–33 / 34–66 / 67–100)
 - Nearest Food Direction: 없음 / 전방 / 후방 / 좌측 / 우측
-- Food Distance: 가까움(≤1.6) / 중간(시야의 50% 이하) / 멂(시야 안) / 탐지 범위 밖
+- Food Distance: 가까움(섭취 가능 거리 이하) / 중간(시야의 50% 이하) / 멂(시야 안) / 탐지 범위 밖
 - Obstacle Ahead: 있음 / 없음
 
 연속값은 이산 구간으로 변환해 상태 키로 인코딩한다. 상태 인코딩은 별도 모듈로 분리하며, 같은 관찰은 항상 같은 상태 키를 생성해야 한다. 초기 상태 공간은 3×3×5×4×2 = 360이다.
@@ -378,17 +411,17 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 
 | Action | 동작 |
 |---|---|
-| MOVE_FORWARD | 현재 방향으로 이동 |
+| MOVE_FORWARD | 현재 방향으로 이동. 기본 에너지 소모를 1.4배로 늘린다 |
 | TURN_LEFT | 일정 각도 좌회전 |
 | TURN_RIGHT | 일정 각도 우회전 |
-| EAT | 섭취 가능한 먹이가 가까이 있으면 섭취 시도 |
+| EAT | 섭취 가능한 먹이가 가까이 있으면 섭취 시도. 같은 거리의 먹이는 다른 행동 직후에도 섭취된다 |
 | REST | 이동을 멈추고 짧은 시간 휴식. 기본 에너지 소모를 0.4배로 줄인다. |
 
 각 행동은 기존 시뮬레이션 엔진의 실제 동작과 연결되어야 한다. 행동 이름만 바뀌고 월드 상태가 바뀌지 않는 가짜 동작은 허용하지 않는다.
 
 ## 6.4 Epsilon-Greedy
 
-- 확률 epsilon으로 무작위 행동을 선택한다.
+- 확률 epsilon으로 무작위 행동을 선택한다. 탐험 분포는 균등이 아니라 전진에 가중치를 둔다. 기본 가중치는 MOVE 0.48, TURN_LEFT 0.16, TURN_RIGHT 0.16, EAT 0.10, REST 0.10이다.
 - 나머지 확률로 현재 Q-값이 가장 높은 행동을 선택한다.
 - 동점 행동 선택 규칙을 정의해 재현성과 편향을 관리한다. 현재 exploit는 `AGENT_ACTIONS` 순서에서 첫 번째 최댓값을 고른다.
 - epsilon은 에이전트별 학습 스텝마다 곱셈 감쇠한다. 학습이 꺼져 있으면 감쇠하지 않는다.
@@ -401,11 +434,14 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 | 사건 | 초기 보상 |
 |---|---:|
 | 먹이 실제 섭취 성공 | +10 |
-| 불필요한 전진 또는 실패한 EAT | -1 |
+| 섭취 가능 거리에서 떠난 전진 또는 실패한 EAT | -1 |
 | 장애물 또는 경계 충돌 | -2 |
 | 허기 또는 에너지 고갈로 사망 | -20 |
-| 에너지가 낮을 때 REST (섭취 가능한 먹이가 없는 경우) | +0.4 |
+| 에너지가 낮고 허기가 급하지 않을 때 REST | +0.4 |
+| 탐색을 위한 전진 | 보상 없음. 대사에서 추가 에너지 소모 |
 | 단순히 먹이 쪽으로 이동 | 성공 보상 없음 |
+
+이동 비용은 Q-보상으로 주지 않고 실제 에너지 소모로 준다. 모든 전진에 −1을 주면 제자리 회전이 더 이득이 되어 학습 초기에 전멸하기 쉽다.
 
 보상은 실제 환경 결과에 의해 계산한다. 먹이를 향해 이동했다는 이유만으로 섭취 성공 보상을 주지 않는다. 같은 사건에 보상이 중복 지급되지 않도록 한다.
 
@@ -420,10 +456,17 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 - Action Distribution: 학습 중 선택된 행동 횟수
 - Current Epsilon: 생존 개체의 현재 epsilon 평균. 생존 개체가 없으면 전체 평균
 - Average Q Value: 방문한 상태-행동 칸에 저장된 Q 값의 평균
-- Exploration Rate: 최근 80개 학습 행동 중 탐험(무작위 선택) 비율
-- Survival Time: 에이전트 age 및 사망 시 수명
+- Exploration Rate: 최근 80개 학습 행동 중 탐험(무작위 선택) 비율. Genome의 Exploration Rate와 다른 값이다
+- Survival Time: 에이전트 age. 대시보드의 Average Survival Time은 사망 개체의 평균 수명이다
 
-Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습 저장소에 둔다. 통계 집계의 범위와 주기를 정의한다. 모든 프레임 데이터를 무제한 저장하지 않는다.
+시계열 기록 규칙:
+- 샘플 주기: 20틱(1초). Reset 시 tick 0 기준점 1개를 기록한다
+- 차트용 `series`: 최근 180개만 유지한다
+- 비교용 `earlySeries`: 처음 30개 샘플을 모은 뒤 고정한다
+- 초기/현재 비교는 두 구간이 겹치지 않을 때만 표시한다. 최소 약 60초의 기록이 필요하다
+- 학습 스텝이나 보상이 없으면 해당 지표는 0이 아니라 Empty State 또는 `—`로 표시한다
+
+Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습 저장소에 둔다. 모든 프레임 데이터를 무제한 저장하지 않는다.
 
 ## 6.7 학습 검증 기준
 
@@ -455,18 +498,23 @@ Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습
 - Average Energy
 - Average Health
 - Average Lifespan
-- Current Generation (진화 기능 구현 후)
+- Current Generation 및 현재 세대 경과 시간
 
 ## 7.2 학습 통계
 
-- Total Learning Steps
-- Average Reward
-- Reward History
-- Exploration Rate
-- Average Survival Time
-- Action Distribution
+Learning 탭에 다음을 표시한다.
 
-각 지표는 단위, 집계 범위, 샘플링 간격을 명시한다.
+- Total Learning Steps
+- Average Reward (최근 80 step)
+- Average Survival Time (사망 개체 평균 수명)
+- Average Energy (생존 개체)
+- Exploration Rate (최근 80 step)
+- Population Size (생존/전체)
+- Reward / Survival / Energy / Learning Steps 차트
+- Action Distribution
+- 학습 초기 30초와 최근 30초 비교. 향상이 없으면 음수 또는 0으로 그대로 표시한다
+
+각 지표는 단위, 집계 범위, 샘플링 간격을 화면에 명시한다. 데이터가 없으면 Empty State를 표시한다.
 
 ## 7.3 에이전트 상세 정보
 
@@ -479,18 +527,21 @@ Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습
 - 이동 경로
 - Learning Steps / Reward / Epsilon
 - 행동 분포 또는 Q-Table 요약
-- Genome 정보 (진화 단계 이후)
+- Genome 정보, 부모 ID, 돌연변이 유전자
 
 선택한 개체가 사망한 경우에도 기록이 남아 있다면 이력은 조회할 수 있다.
 
 ## 7.4 이동 및 행동 시각화
 
-- 선택한 에이전트의 최근 이동 경로를 표시한다.
+- 선택한 에이전트의 최근 이동 경로를 표시한다. 경로 구간은 당시 행동 색을 사용하고, 범례에 행동 글자를 함께 표시한다.
 - 시야 범위는 선택된 에이전트에만 표시한다.
+- 선택된 에이전트가 시야 안의 먹이를 보면 먹이 탐색 경로(점선)를 표시한다.
 - 살아 있는 에이전트의 이동 방향을 화살표로 표시한다.
+- 생존 개체의 최근 행동은 색과 글자(F/L/R/E/S)로 함께 표시한다.
 - 사망 개체는 쓰러진 자세, 회색 재질, Dead 라벨로 생존 개체와 구분한다.
 - 경로 및 행동 이력에는 최대 길이 또는 시간 제한을 둔다.
 - 이동 경로는 에이전트별로 최근 80개 지점만 유지한다. 직전 지점과의 거리가 0.08 월드 단위 미만이면 새 샘플을 추가하지 않는다.
+- 좌측 설정에서 이동 경로, 시야 범위, 먹이 탐색 경로, 행동 표시를 켜고 끌 수 있다.
 - 시각화가 시뮬레이션 계산에 과도한 부하를 주지 않도록 샘플링한다.
 
 ## 7.5 차트 원칙
@@ -512,46 +563,51 @@ Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습
 ## 8.2 초기 세대 모델
 
 초기 버전은 구현 복잡도를 줄이기 위해 **세대 단위(cohort-based) 진화**를 기본으로 한다.
-- 각 세대는 정해진 시뮬레이션 시간 또는 세대 종료 조건에 따라 마무리된다.
-- 세대 종료 시 생존 개체를 후보 부모로 선정한다.
-- 선택된 부모의 유전 정보를 조합해 다음 세대 개체를 생성한다.
-- 다음 세대의 초기 개체 수는 설정값 및 Population Limit을 따른다.
+- 각 세대는 정해진 시뮬레이션 시간 또는 전멸에 따라 마무리된다. 기본 세대 길이는 120초이며 설정에서 60/90/120/180초를 고른다.
+- 시간 제한으로 세대가 끝나면 생존 개체를 후보 부모로 선정한다.
+- 선택된 부모의 유전 정보를 조합해 다음 세대 개체를 생성한다. 부모 개체는 교체되며 같은 세대에 섞이지 않는다.
+- 다음 세대의 초기 개체 수는 `min(설정된 개체 수, Population Limit)`이다.
+- 전멸하면 부모 후보가 없으므로 다음 세대를 만들지 않고 시뮬레이션을 `ended`로 종료한다.
 
 실시간 번식 및 여러 세대가 동시에 존재하는 overlapping generations는 후속 확장으로 둔다. 구현 시 실시간 번식을 선택한다면 이 명세와 세대 통계 모델을 먼저 수정한다.
 
 ## 8.3 부모 선택 및 번식
 
-- 생존 개체만 부모 후보가 된다.
-- 부모 선택 방식은 초기에는 생존 여부와 fitness 기반 확률 선택 또는 상위 일부 선택 중 하나로 단순화한다.
-- fitness 정의는 생존 시간, 누적 보상, 에너지 관리 등 측정 가능한 값으로 구성하고 가중치를 명시한다.
-- 자식의 유전 정보는 부모 유전값의 조합으로 생성한다.
-- 번식 결과 개체 수는 Population Limit을 초과하지 않는다.
+- 생존 개체만 부모 후보가 된다. 번식 조건은 `alive && health > 0`이다.
+- 부모는 fitness 비례 확률(룰렛)로 고른다. 생존자가 1명이면 그 개체가 두 부모 역할을 한다.
+- fitness = `age × 1.0 + max(0, totalReward) × 0.2 + energy × 0.5`. 가중치는 `src/evolution/constants.ts`에 둔다.
+- 자식 Genome은 유전자별 uniform crossover(각 유전자를 부모 중 하나에서 복사)로 만든다.
+- 번식 결과 개체 수는 Population Limit을 초과하지 않는다. 자식의 에너지·허기·체력·나이는 새로 뽑으며 부모 생존 상태를 이어받지 않는다.
 
 ## 8.4 Mutation
 
-- 유전자별 돌연변이 확률을 설정한다.
-- 돌연변이는 제한된 범위 안에서 값을 변경한다.
-- 변경 전후의 유전자 값을 확인할 수 있도록 한다.
+- 유전자별 돌연변이 확률은 기본 0.15다.
+- 돌연변이는 해당 유전자 범위의 ±18%를 더한 뒤 clamp한다.
+- 개체 상세에서 어떤 유전자가 태어날 때 변이했는지 표시한다.
 - 돌연변이가 항상 유리하다고 가정하지 않는다.
 
 ## 8.5 Learning Inheritance
 
 - 기본값은 자식이 새로운 Q-Table로 학습을 시작하는 것이다.
-- 선택적으로 부모의 Q-Table을 상속하는 실험 옵션을 제공할 수 있다.
+- 좌측 설정에서 Q-Table 상속을 켤 수 있다. 켜면 두 부모 중 fitness가 높은 쪽의 Q-Table 복사본을 받는다.
+- 상속해도 학습 스텝·보상·epsilon은 이어받지 않는다. 자식 epsilon은 Genome Exploration Rate로 시작한다.
 - Q-Table 상속은 유전 정보 전달과 분리된 설정으로 관리한다.
-- Q-Table의 상태 인코딩이나 행동 공간 버전이 다르면 상속을 거부하거나 명시적인 변환 절차를 사용한다.
+- Q-Table의 상태 인코딩이나 행동 공간 버전이 다르면 상속을 거부하거나 명시적인 변환 절차를 사용한다. 현재는 동일 인코딩만 사용한다.
 
 ## 8.6 세대 통계
 
+세대가 끝날 때만 이력을 남긴다. 진행 중 세대의 평균은 화면에만 보여 주고 기록에 섞지 않는다.
+
 세대별로 다음을 기록한다.
 - Population Size
-- Survival Rate
-- Average Lifespan
-- Average Reward
-- Average Speed
-- Average Vision
-- Average Energy Efficiency
-- Mutation Summary
+- Survival Rate (종료 시점 생존 수 / 시작 개체 수)
+- Average Lifespan (해당 세대 모든 개체의 age 평균)
+- Average Reward (학습 스텝이 있는 개체의 `totalReward / totalSteps` 평균)
+- Average Speed / Vision / Energy Efficiency / Learning Rate / Exploration Rate
+- Mutation Summary (태어날 때 변이한 개체·유전자 수)
+- End Reason (`time` 또는 `extinction`)
+
+Evolution 탭에서 세대 번호 축으로 평균 생존 시간, Speed, Vision, Energy Efficiency, Reward, Population Size를 비교한다. 값이 나빠도 그대로 표시한다.
 
 진화가 반드시 지능 또는 생존 능력의 향상을 의미하지 않는다는 점을 UI에서도 왜곡 없이 표현한다.
 
@@ -573,14 +629,16 @@ Q-Table과 학습 파라미터는 렌더링용 월드 상태와 분리된 학습
 
 ## 9.2 Learning Configuration
 
-사용자가 설정할 항목:
+현재 좌측 설정에서 사용자가 바꾸는 항목:
+- Learning Enabled/Disabled
+
+다음 항목은 코드 기본값으로 고정하고, STEP 5 학습 대시보드에서 현재 값을 확인한다. 편집 UI는 아직 제공하지 않는다:
 - Learning Rate
 - Discount Factor
 - Initial Epsilon
 - Minimum Epsilon
 - Epsilon Decay
 - Reward Configuration
-- Learning Enabled/Disabled
 
 잘못된 범위의 입력은 저장 또는 실행 전에 검증하고 사용자에게 안내한다.
 
@@ -667,8 +725,8 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 | 2 | Agents & Ecosystem | 에이전트, 먹이, 이동, 에너지, 사망 | Done |
 | 3 | Controls & Inspection | Play/Pause/Reset, 속도, 선택, 상세 패널 | Done |
 | 4 | Reinforcement Learning | Observation, Action, Q-Learning, Reward | Done |
-| 5 | Learning Analytics | 학습 지표, 차트, 경로 및 행동 시각화 | Not Started |
-| 6 | Evolution | Genome, 선택, 번식, 돌연변이, 세대 기록 | Not Started |
+| 5 | Learning Analytics | 학습 지표, 차트, 경로 및 행동 시각화 | Done |
+| 6 | Evolution | Genome, 선택, 번식, 돌연변이, 세대 기록 | Done |
 | 7 | Sandbox & Persistence | 환경 설정, IndexedDB, JSON 입출력, 실험 비교 | Not Started |
 | 8 | Optimization & Release | 테스트, 성능, 안정성, 문서, 빌드 | Not Started |
 
@@ -682,7 +740,7 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 - 평면 지형 및 격자 패턴
 - 기본 먹이/나무/바위 오브젝트 표현을 위한 구조
 - 3/4 Top-down 카메라 및 회전·확대·축소
-- 좌측 설정, 우측 정보, 하단 컨트롤 레이아웃
+- 좌측 설정, World/Simulation/Learning/Evolution 탭, 하단 컨트롤 레이아웃
 
 **완료 조건**
 - `npm run dev` 실행 성공
@@ -693,7 +751,7 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 
 ## STEP 2 — Agents & Ecosystem
 
-- 초기 에이전트 20개 생성
+- 초기 에이전트는 기본 20개이며, 설정에서 1–50개로 조절한다.
 - 단순 캡슐 또는 로우폴리 인간형 모델
 - 개체별 독립 상태 및 이동
 - 먹이 생성 및 섭취
@@ -712,7 +770,8 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 ## STEP 3 — Controls & Inspection
 
 - Play / Pause / Reset
-- 1x / 2x / 5x / 10x 속도 조절
+- 전멸 시 `ended` 상태와 월드 위 종료 오버레이. Play는 막고 Reset으로 다시 시작한다.
+- 1x / 2x / 5x / 10x / 100x / 1000x 속도 조절. 고속은 프레임당 스텝 상한으로 실제 진행이 배율보다 느릴 수 있다.
 - Simulation Time 표시
 - 개체 클릭 및 선택 표시
 - 상세 상태 패널
@@ -759,12 +818,13 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 
 ## STEP 6 — Evolution
 
-- Genome 도입
+- Genome 도입 (`src/evolution/`)
 - 부모 후보 선택
 - 유전 정보 조합
 - 돌연변이
 - 세대 전환 및 통계
 - Q-Table 상속 옵션(기본 비활성)
+- Evolution 탭 세대 비교 차트
 
 **완료 조건**
 - 부모 유전 정보가 자식에게 전달됨
@@ -955,20 +1015,37 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 |---|---|---|
 | 프로젝트 초기 저장소 | Done | Vite + React + TypeScript 프로젝트 |
 | STEP 1 — 3D World | Done | 3D 지형, 카메라, 기본 레이아웃 |
-| STEP 2 — Agents & Ecosystem | Done | 20개체, 먹이, 생존 규칙, 통계 |
-| STEP 3 — Controls & Inspection | Done | Play/Pause/Reset, 1x/2x/5x/10x, 선택, 시야/경로/방향 |
+| STEP 2 — Agents & Ecosystem | Done | 기본 20개체(1–50 조절), 먹이, 생존 규칙, 통계 |
+| STEP 3 — Controls & Inspection | Done | Play/Pause/Reset, 1x/2x/5x/10x/100x/1000x, 선택, 시야/경로/방향 |
 | STEP 4 — Reinforcement Learning | Done | Tabular Q-Learning, 에이전트별 Q-Table, Epsilon-Greedy, 보상 모듈, 학습 on/off |
-| STEP 5 — Learning Analytics | Not Started | |
-| STEP 6 — Evolution | Not Started | |
+| STEP 5 — Learning Analytics | Done | 대시보드, 차트, 개체 검사, 3D 행동 시각화, 초기/현재 비교 |
+| STEP 6 — Evolution | Done | Genome, 세대 단위 번식, 돌연변이, 세대 차트, Q-Table 상속(기본 꺼짐) |
 | STEP 7 — Persistence | Not Started | |
 | STEP 8 — Optimization & Release | Not Started | |
 
-**현재 다음 작업:** STEP 5 — Learning Analytics.
+**현재 다음 작업:** STEP 7 — Sandbox & Persistence.
+
+**STEP 6 구현 메모**
+- 세대 모델은 cohort-based다. 기본 120초 또는 전멸 시 세대가 끝난다. 생존자가 있으면 자식을 만들고 시뮬레이션을 이어 간다. 전멸이면 `ended`다.
+- Genome 다섯 값(Speed, Vision, Energy Efficiency, Learning Rate, Exploration Rate)은 Q-Table과 분리한다. Q-update α와 초기 epsilon은 Genome을 쓴다.
+- 부모는 생존 개체만 후보이며 fitness 비례로 고른다. 자식은 uniform crossover 후 유전자별 15% 돌연변이를 적용한다.
+- 다음 세대 수는 `min(개체 수, Population Limit)`이다.
+- Q-Table 상속은 설정에서만 켠다. 기본은 빈 Q-Table이다. 상속해도 학습 통계와 epsilon은 새 생명 기준으로 시작한다.
+- Evolution 탭 차트는 완료된 세대 기록만 사용한다. 향상을 가정하거나 보간하지 않는다.
+
+**STEP 5 구현 메모**
+- 우측 패널 대신 World/Simulation/Learning/Evolution 탭을 둔다. Simulation은 생태계 통계, Learning은 학습 대시보드, Evolution은 세대 비교를 담당한다. 개체를 선택하면 해당 탭에서 상세를 표시한다.
+- 차트는 실제 `learningHistory`만 사용한다. 샘플은 1초마다 남기고 최근 180개만 유지한다.
+- Average Survival Time과 Survival 차트는 사망 개체가 있을 때만 값을 표시한다.
+- 초기/현재 비교는 첫 30초와 최근 30초가 겹치지 않을 때만 계산한다. 값이 나빠도 그대로 보여 준다.
+- 학습 하이퍼파라미터는 대시보드에서 읽기 전용으로 표시한다.
 
 **STEP 4 구현 메모**
-- 섭취는 더 이상 근접 시 자동으로 이루어지지 않고, 에이전트가 `EAT`를 선택해야 한다.
+- 섭취 가능 거리 안의 먹이는 현재 행동과 관계없이 섭취한다. `EAT`는 같은 섭취를 명시적으로 시도한다.
+- 학습 하이퍼파라미터는 좌측 설정에 노출하지 않는다. 학습 on/off만 제공한다.
+- 생존 개체가 없으면 상태를 `ended`로 바꾸고 월드 위에 종료 오버레이를 표시한다.
 - Q-Table은 Zustand/렌더 상태 밖의 학습 저장소에 둔다. UI는 집계값과 최근 행동만 읽는다.
 - Average Reward는 최근 80개 학습 보상의 평균, Average Q는 방문한 상태-행동 Q 값의 평균, Exploration Rate는 최근 80개 학습 행동의 탐험 비율이다.
-- 학습 초기(epsilon≈1)에는 무작위 행동 때문에 수명이 짧아질 수 있다. 이는 실제 학습 전 성능이며 꾸며내지 않는다.
+- 학습 초기(epsilon≈1)에는 무작위 행동 때문에 수명이 짧아질 수 있다. 이는 실제 학습 전 성능이며 꾸며내지 않는다. 0.7.0부터는 초기 2분 동안 대부분 생존하고, 첫 사망은 대략 3–4분에 나도록 대사와 먹이 밀도를 맞춘다.
 - 랜덤 정책 비교: 학습을 처음부터 끄면 epsilon이 1.0으로 유지되어 무작위 정책과 같다. 학습 후 끄면 고정 정책을 평가할 수 있다.
 

@@ -1,10 +1,5 @@
 import { useSimulationStore } from '../../store/useSimulationStore'
-
-const STATUS_LABEL = {
-  idle: '대기',
-  running: '실행 중',
-  paused: '일시정지',
-} as const
+import { SIMULATION_STATUS_LABEL } from '../../utils/status'
 
 export function Header() {
   const status = useSimulationStore((state) => state.status)
@@ -24,11 +19,19 @@ export function Header() {
       <div className="flex items-center gap-2 text-[12px]">
         <span
           className={`h-2 w-2 rounded-full ${
-            status === 'running' ? 'bg-lab-accent' : 'bg-lab-muted'
+            status === 'running'
+              ? 'bg-lab-accent'
+              : status === 'ended'
+                ? 'bg-lab-danger'
+                : 'bg-lab-muted'
           }`}
         />
-        <span className="font-mono tracking-wide text-lab-muted uppercase">
-          {STATUS_LABEL[status]}
+        <span
+          className={`font-mono tracking-wide uppercase ${
+            status === 'ended' ? 'text-lab-danger' : 'text-lab-muted'
+          }`}
+        >
+          {SIMULATION_STATUS_LABEL[status]}
         </span>
         <span className="font-mono tracking-wide text-lab-muted uppercase">
           · {learningEnabled ? 'Learning On' : 'Learning Off'}

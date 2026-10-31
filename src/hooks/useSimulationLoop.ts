@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
-import { SIMULATION_STEP_DT } from '../simulation/constants'
+import { getMaxStepsPerFrame, SIMULATION_STEP_DT } from '../simulation/constants'
 import { useSimulationStore } from '../store/useSimulationStore'
-
-const MAX_STEPS_PER_FRAME = 8
 
 export function useSimulationLoop() {
   const status = useSimulationStore((state) => state.status)
@@ -16,6 +14,7 @@ export function useSimulationLoop() {
     let frameId = 0
     let previous = performance.now()
     let accumulator = 0
+    const maxStepsPerFrame = getMaxStepsPerFrame(speed)
 
     const loop = (now: number) => {
       const elapsed = Math.min((now - previous) / 1000, 0.25)
@@ -23,13 +22,18 @@ export function useSimulationLoop() {
       accumulator += elapsed * speed
 
       let steps = 0
-      while (accumulator >= SIMULATION_STEP_DT && steps < MAX_STEPS_PER_FRAME) {
-        useSimulationStore.getState().step(SIMULATION_STEP_DT)
+      while (accumulator >= SIMULATION_STEP_DT && steps < maxStepsPerFrame) {
+        const state = useSimulationStore.getState()
+        if (state.status !== 'running') {
+          accumulator = 0
+          break
+        }
+        state.step(SIMULATION_STEP_DT)
         accumulator -= SIMULATION_STEP_DT
         steps += 1
       }
 
-      if (steps === MAX_STEPS_PER_FRAME) {
+      if (steps === maxStepsPerFrame) {
         accumulator = 0
       }
 

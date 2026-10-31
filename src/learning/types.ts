@@ -92,6 +92,19 @@ export interface LearningStats {
   explorationRate: number
   visitedStates: number
   learningEnabled: boolean
+  hasLearningSamples: boolean
+  actionCounts: Record<AgentAction, number>
+}
+
+export interface QTableSummary {
+  visitedStates: number
+  stateSpaceSize: number
+  coverage: number
+  averageQ: number
+  minQ: number
+  maxQ: number
+  averageQByAction: Record<AgentAction, number>
+  preferredActionCounts: Record<AgentAction, number>
 }
 
 export interface AgentLearningView {
@@ -106,4 +119,6 @@ export interface AgentLearningView {
   explorationRate: number
   visitedStates: number
   actionCounts: Record<AgentAction, number>
+  recentRewards: number[]
+  qTable: QTableSummary
 }

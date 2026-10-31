@@ -1,5 +1,13 @@
+export type {
+  EvolutionConfig,
+  GenerationEndReason,
+  GenerationRecord,
+  Genome,
+  GenomeGene,
+  MutationSummary,
+} from '../evolution/types'
 export type { AgentAction, LearningConfig, LearningStats, Observation, RewardConfig } from '../learning/types'
-export type { Agent, AgentPosition, AgentStats, AgentTrail } from './agent'
+export type { Agent, AgentPosition, AgentStats, AgentTrail, AgentTrailPoint } from './agent'
 
 export type {
   ObjectDefinition,
@@ -11,6 +19,8 @@ export type {
 } from './world'
 
 export type {
+  LearningHistoryPoint,
+  LearningHistoryState,
   SimulationActions,
   SimulationSnapshot,
   SimulationState,

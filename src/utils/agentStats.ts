@@ -1,5 +1,9 @@
 import type { Agent, AgentStats } from '../types/agent'
 
+export function isPopulationExtinct(agents: Agent[]): boolean {
+  return agents.length === 0 || agents.every((agent) => !agent.alive)
+}
+
 export function summarizeAgents(agents: Agent[]): AgentStats {
   let aliveCount = 0
   let energySum = 0

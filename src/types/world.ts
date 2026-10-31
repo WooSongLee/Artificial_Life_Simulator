@@ -19,6 +19,7 @@ export interface WorldObject {
 export interface WorldConfig {
   size: number
   gridDivisions: number
+  agentCount: number
 }
 
 export interface WorldState {
@@ -26,6 +27,8 @@ export interface WorldState {
   objects: WorldObject[]
   agents: Agent[]
   foodSpawnCooldown: number
+  generation: number
+  generationStartTick: number
 }
 
 export interface ObjectDefinition {

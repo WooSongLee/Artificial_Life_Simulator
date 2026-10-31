@@ -1,3 +1,4 @@
+import { EXPLORE_ACTION_WEIGHTS } from './constants'
 import { AGENT_ACTIONS, type ActionSelection, type AgentAction, type AgentPolicy, type StateKey } from './types'
 
 export const ACTION_COUNT = AGENT_ACTIONS.length
@@ -62,15 +63,28 @@ export function decayEpsilon(epsilon: number, decay: number, minEpsilon: number)
   return Math.max(minEpsilon, epsilon * decay)
 }
 
+export function pickWeightedAction(weights: readonly number[], rng: () => number): AgentAction {
+  const roll = rng()
+  let cumulative = 0
+
+  for (let i = 0; i < weights.length; i += 1) {
+    cumulative += weights[i] ?? 0
+    if (roll < cumulative) {
+      return AGENT_ACTIONS[i] ?? AGENT_ACTIONS[0]
+    }
+  }
+
+  return AGENT_ACTIONS[weights.length - 1] ?? AGENT_ACTIONS[0]
+}
+
 export function selectEpsilonGreedy(
   qValues: readonly number[],
   epsilon: number,
   rng: () => number,
 ): ActionSelection {
   if (rng() < epsilon) {
-    const index = Math.min(ACTION_COUNT - 1, Math.floor(rng() * ACTION_COUNT))
     return {
-      action: AGENT_ACTIONS[index] ?? AGENT_ACTIONS[0],
+      action: pickWeightedAction(EXPLORE_ACTION_WEIGHTS, rng),
       explored: true,
     }
   }

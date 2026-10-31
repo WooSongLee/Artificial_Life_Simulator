@@ -16,8 +16,9 @@ import {
   HUNGER_DRAIN_THRESHOLD,
   HUNGER_GAIN_PER_SEC,
   HUNGRY_EXTRA_DRAIN_PER_SEC,
+  MOVE_ENERGY_DRAIN_MULTIPLIER,
   REST_ENERGY_DRAIN_MULTIPLIER,
-  TARGET_FOOD_COUNT,
+  getTargetFoodCount,
 } from './constants'
 import { collidesWithObstacles, isInsideWorld } from './spatial'
 import { createWorldObject } from './worldFactory'
@@ -27,13 +28,20 @@ export interface AgentTickResult {
   consumedFoodId: string | null
 }
 
+export function energyDrainMultiplier(action: AgentAction): number {
+  if (action === 'REST') return REST_ENERGY_DRAIN_MULTIPLIER
+  if (action === 'MOVE_FORWARD') return MOVE_ENERGY_DRAIN_MULTIPLIER
+  return 1
+}
+
 function applyMetabolism(agent: Agent, dt: number, action: AgentAction): Agent {
-  const drainScale = action === 'REST' ? REST_ENERGY_DRAIN_MULTIPLIER : 1
+  const efficiency = Math.max(agent.genome.energyEfficiency, 0.01)
+  const drainScale = energyDrainMultiplier(action) / efficiency
   let energy = clampStat(agent.energy - ENERGY_DRAIN_PER_SEC * drainScale * dt)
   let hunger = clampStat(agent.hunger + HUNGER_GAIN_PER_SEC * dt)
 
   if (hunger >= HUNGER_DRAIN_THRESHOLD) {
-    energy = clampStat(energy - HUNGRY_EXTRA_DRAIN_PER_SEC * dt)
+    energy = clampStat(energy - HUNGRY_EXTRA_DRAIN_PER_SEC * dt / efficiency)
   }
 
   let health = agent.health
@@ -84,6 +92,26 @@ function moveForward(agent: Agent, world: WorldState, dt: number): { agent: Agen
   }
 }
 
+function consumeNearbyFood(
+  agent: Agent,
+  objects: WorldObject[],
+): { agent: Agent; ate: boolean; consumedFoodId: string | null } {
+  const food = findFoodInEatRange(agent, objects)
+  if (!food) {
+    return { agent, ate: false, consumedFoodId: null }
+  }
+
+  return {
+    agent: {
+      ...agent,
+      energy: clampStat(agent.energy + FOOD_ENERGY_RESTORE),
+      hunger: clampStat(agent.hunger - FOOD_HUNGER_RELIEF),
+    },
+    ate: true,
+    consumedFoodId: food.id,
+  }
+}
+
 function executeAction(
   agent: Agent,
   action: AgentAction,
@@ -93,41 +121,32 @@ function executeAction(
   switch (action) {
     case 'MOVE_FORWARD': {
       const moved = moveForward(agent, world, dt)
-      return { agent: moved.agent, ate: false, collided: moved.collided, consumedFoodId: null }
+      const eaten = consumeNearbyFood(moved.agent, world.objects)
+      return {
+        agent: eaten.agent,
+        ate: eaten.ate,
+        collided: moved.collided,
+        consumedFoodId: eaten.consumedFoodId,
+      }
     }
-    case 'TURN_LEFT':
-      return {
-        agent: { ...agent, rotation: wrapAngle(agent.rotation + agent.turnRate * dt) },
-        ate: false,
-        collided: false,
-        consumedFoodId: null,
-      }
-    case 'TURN_RIGHT':
-      return {
-        agent: { ...agent, rotation: wrapAngle(agent.rotation - agent.turnRate * dt) },
-        ate: false,
-        collided: false,
-        consumedFoodId: null,
-      }
+    case 'TURN_LEFT': {
+      const turned = { ...agent, rotation: wrapAngle(agent.rotation + agent.turnRate * dt) }
+      const eaten = consumeNearbyFood(turned, world.objects)
+      return { agent: eaten.agent, ate: eaten.ate, collided: false, consumedFoodId: eaten.consumedFoodId }
+    }
+    case 'TURN_RIGHT': {
+      const turned = { ...agent, rotation: wrapAngle(agent.rotation - agent.turnRate * dt) }
+      const eaten = consumeNearbyFood(turned, world.objects)
+      return { agent: eaten.agent, ate: eaten.ate, collided: false, consumedFoodId: eaten.consumedFoodId }
+    }
     case 'EAT': {
-      const food = findFoodInEatRange(agent, world.objects)
-      if (!food) {
-        return { agent, ate: false, collided: false, consumedFoodId: null }
-      }
-
-      return {
-        agent: {
-          ...agent,
-          energy: clampStat(agent.energy + FOOD_ENERGY_RESTORE),
-          hunger: clampStat(agent.hunger - FOOD_HUNGER_RELIEF),
-        },
-        ate: true,
-        collided: false,
-        consumedFoodId: food.id,
-      }
+      const eaten = consumeNearbyFood(agent, world.objects)
+      return { agent: eaten.agent, ate: eaten.ate, collided: false, consumedFoodId: eaten.consumedFoodId }
     }
-    case 'REST':
-      return { agent, ate: false, collided: false, consumedFoodId: null }
+    case 'REST': {
+      const eaten = consumeNearbyFood(agent, world.objects)
+      return { agent: eaten.agent, ate: eaten.ate, collided: false, consumedFoodId: eaten.consumedFoodId }
+    }
   }
 }
 
@@ -194,9 +213,10 @@ export function respawnFood(
   world: WorldState,
   dt: number,
 ): { objects: WorldObject[]; foodSpawnCooldown: number } {
+  const targetFoodCount = getTargetFoodCount(world.config.agentCount)
   const foodCount = objects.reduce((count, object) => count + (object.type === 'food' ? 1 : 0), 0)
 
-  if (foodCount >= TARGET_FOOD_COUNT) {
+  if (foodCount >= targetFoodCount) {
     return { objects, foodSpawnCooldown: FOOD_SPAWN_INTERVAL }
   }
 
@@ -208,7 +228,7 @@ export function respawnFood(
       (count, object) => count + (object.type === 'food' ? 1 : 0),
       0,
     )
-    if (currentFood >= TARGET_FOOD_COUNT) {
+    if (currentFood >= targetFoodCount) {
       cooldown = FOOD_SPAWN_INTERVAL
       break
     }
