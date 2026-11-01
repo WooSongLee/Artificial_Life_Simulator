@@ -1,30 +1,57 @@
-import { AGENT_LOOKAHEAD, AGENT_RADIUS, FOOD_EAT_RADIUS } from '../simulation/constants'
-import { collidesWithObstacles, isInsideWorld } from '../simulation/spatial'
+import { agentSeparation, attackRangeFor, findNearestLivingAgent } from '../simulation/combat'
+import { AGENT_LOOKAHEAD, AGENT_RADIUS, FOOD_EAT_RADIUS, GATHER_RADIUS } from '../simulation/constants'
+import { durabilityBand, findVisibleForage, findVisibleTool } from '../simulation/forage'
+import { isBlockedWorldPosition } from '../simulation/spatial'
+import {
+  canDetectAt,
+  getDetectionRange,
+  getTerrainTypeAt,
+} from '../simulation/terrain'
 import type { Agent } from '../types/agent'
+import type { ForageNode, ToolType } from '../types/forage'
 import type { WorldObject, WorldState } from '../types/world'
 import { distanceSq, shortestAngleDelta } from '../utils/math'
 import { STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX } from './constants'
+import {
+  AGENT_DIRECTIONS,
+  AGENT_DISTANCES,
+  ENERGY_BANDS,
+  FOOD_DIRECTIONS,
+  FOOD_DISTANCES,
+  FORAGE_CUES,
+  HEALTH_BANDS,
+  HELD_TOOLS,
+  HUNGER_BANDS,
+  NEARBY_TOOLS,
+  OBSTACLE_AHEAD_VALUES,
+  OBSERVATION_TERRAIN_VALUES,
+} from './types'
 import type {
+  AgentDirection,
+  AgentDistance,
   EnergyBand,
   FoodDirection,
   FoodDistance,
-  HungerBand,
+  ForageCue,
+  HeldTool,
+  NearbyTool,
   Observation,
+  ObservationTerrain,
   ObstacleAhead,
   StateKey,
 } from './types'
 
-export function findNearestFood(agent: Agent, objects: WorldObject[]): WorldObject | null {
+export function findNearestFood(agent: Agent, world: WorldState): WorldObject | null {
   let nearest: WorldObject | null = null
-  let nearestDist = agent.vision * agent.vision
+  let nearestDist = Number.POSITIVE_INFINITY
 
-  for (const object of objects) {
+  for (const object of world.objects) {
     if (object.type !== 'food') continue
     const dist = distanceSq(agent.position.x, agent.position.z, object.position.x, object.position.z)
-    if (dist < nearestDist) {
-      nearest = object
-      nearestDist = dist
-    }
+    if (dist >= nearestDist) continue
+    if (!canDetectAt(agent, object.position.x, object.position.z, world, dist)) continue
+    nearest = object
+    nearestDist = dist
   }
 
   return nearest
@@ -60,51 +87,175 @@ export function observeFoodDirection(agent: Agent, food: WorldObject | null): Fo
   return delta > 0 ? 'left' : 'right'
 }
 
-export function observeFoodDistance(agent: Agent, food: WorldObject | null): FoodDistance {
+export function observeFoodDistance(agent: Agent, food: WorldObject | null, world: WorldState): FoodDistance {
   if (!food) return 'out'
 
   const dist = Math.hypot(food.position.x - agent.position.x, food.position.z - agent.position.z)
+  const detection = getDetectionRange(agent, food.position.x, food.position.z, world)
   if (dist <= FOOD_EAT_RADIUS) return 'close'
-  if (dist <= agent.vision * 0.5) return 'mid'
-  if (dist <= agent.vision) return 'far'
+  if (dist <= detection * 0.5) return 'mid'
+  if (dist <= detection) return 'far'
   return 'out'
 }
 
 export function observeObstacleAhead(agent: Agent, world: WorldState): ObstacleAhead {
-  const lookX = agent.position.x + Math.sin(agent.rotation) * AGENT_LOOKAHEAD
-  const lookZ = agent.position.z + Math.cos(agent.rotation) * AGENT_LOOKAHEAD
-  const blocked =
-    !isInsideWorld(lookX, lookZ, world.config.size) ||
-    collidesWithObstacles(lookX, lookZ, AGENT_RADIUS, world.objects)
+  const look = lookAheadPoint(agent)
+  return isBlockedWorldPosition(look.x, look.z, world, AGENT_RADIUS) ? 'yes' : 'no'
+}
 
-  return blocked ? 'yes' : 'no'
+export function observeTerrain(agent: Agent, world: WorldState): ObservationTerrain {
+  return getTerrainTypeAt(world.terrain, agent.position.x, agent.position.z, world.config.size)
+}
+
+export function observeTerrainAhead(agent: Agent, world: WorldState): ObservationTerrain {
+  const look = lookAheadPoint(agent)
+  return getTerrainTypeAt(world.terrain, look.x, look.z, world.config.size)
+}
+
+export function observeForage(agent: Agent, world: WorldState): ForageCue {
+  const forage = findVisibleForage(agent, world, (x, z, dist) => canDetectAt(agent, x, z, world, dist))
+  if (!forage) return 'none'
+
+  const dist = Math.hypot(forage.position.x - agent.position.x, forage.position.z - agent.position.z)
+  const prefix = forage.kind === 'berry_bush' ? 'berry' : 'root'
+  if (dist <= GATHER_RADIUS) return `${prefix}_close`
+
+  const heading = observeTargetHeading(agent, forage)
+  return heading === 'forward' ? `${prefix}_fwd` : `${prefix}_oth`
+}
+
+export function observeNearbyTool(agent: Agent, world: WorldState): NearbyTool {
+  const tool = findVisibleTool(agent, world.worldTools, (x, z, dist) =>
+    canDetectAt(agent, x, z, world, dist),
+  )
+  if (!tool) return 'none'
+  return nearbyToolToken(tool.toolType)
+}
+
+export function observeHeldTool(agent: Agent): HeldTool {
+  const band = durabilityBand(agent.equipment)
+  if (band === 'none' || !agent.equipment) return 'none'
+  return `${heldToolPrefix(agent.equipment.toolType)}_${band}`
+}
+
+export function observeNearbyAgentDirection(agent: Agent, other: Agent | null): AgentDirection {
+  if (!other) return 'none'
+  return observeFoodDirection(agent, { position: { x: other.position.x, z: other.position.z } } as WorldObject)
+}
+
+export function observeNearbyAgentDistance(agent: Agent, other: Agent | null, world: WorldState): AgentDistance {
+  if (!other) return 'out'
+
+  const dist = agentSeparation(agent, other)
+  if (dist <= attackRangeFor(agent)) return 'close'
+  const detection = getDetectionRange(agent, other.position.x, other.position.z, world)
+  if (dist <= detection * 0.5) return 'mid'
+  if (dist <= detection) return 'far'
+  return 'out'
 }
 
 export function observeAgent(agent: Agent, world: WorldState): Observation {
-  const food = findNearestFood(agent, world.objects)
+  const food = findNearestFood(agent, world)
+  const nearby = findNearestLivingAgent(agent, world)
 
   return {
     energy: bandStat(agent.energy),
     hunger: bandStat(agent.hunger),
     foodDirection: observeFoodDirection(agent, food),
-    foodDistance: observeFoodDistance(agent, food),
+    foodDistance: observeFoodDistance(agent, food, world),
     obstacleAhead: observeObstacleAhead(agent, world),
+    terrain: observeTerrain(agent, world),
+    terrainAhead: observeTerrainAhead(agent, world),
+    forage: observeForage(agent, world),
+    nearbyTool: observeNearbyTool(agent, world),
+    heldTool: observeHeldTool(agent),
+    agentDirection: observeNearbyAgentDirection(agent, nearby),
+    agentDistance: observeNearbyAgentDistance(agent, nearby, world),
+    health: bandStat(agent.health),
   }
 }
 
 export function encodeObservation(observation: Observation): StateKey {
-  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}`
+  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}|${observation.terrain}|${observation.terrainAhead}|${observation.forage}|${observation.nearbyTool}|${observation.heldTool}|${observation.agentDirection}|${observation.agentDistance}|${observation.health}`
 }
 
 export function decodeObservation(stateKey: StateKey): Observation | null {
-  const [energy, hunger, foodDirection, foodDistance, obstacleAhead] = stateKey.split('|')
-  if (!energy || !hunger || !foodDirection || !foodDistance || !obstacleAhead) return null
+  const tokens = stateKey.split('|')
+  if (tokens.length !== 13) return null
+  const [
+    energy,
+    hunger,
+    foodDirection,
+    foodDistance,
+    obstacleAhead,
+    terrain,
+    terrainAhead,
+    forage,
+    nearbyTool,
+    heldTool,
+    agentDirection,
+    agentDistance,
+    health,
+  ] = tokens
+  if (
+    !isToken(energy, ENERGY_BANDS) ||
+    !isToken(hunger, HUNGER_BANDS) ||
+    !isToken(foodDirection, FOOD_DIRECTIONS) ||
+    !isToken(foodDistance, FOOD_DISTANCES) ||
+    !isToken(obstacleAhead, OBSTACLE_AHEAD_VALUES) ||
+    !isToken(terrain, OBSERVATION_TERRAIN_VALUES) ||
+    !isToken(terrainAhead, OBSERVATION_TERRAIN_VALUES) ||
+    !isToken(forage, FORAGE_CUES) ||
+    !isToken(nearbyTool, NEARBY_TOOLS) ||
+    !isToken(heldTool, HELD_TOOLS) ||
+    !isToken(agentDirection, AGENT_DIRECTIONS) ||
+    !isToken(agentDistance, AGENT_DISTANCES) ||
+    !isToken(health, HEALTH_BANDS)
+  ) {
+    return null
+  }
 
   return {
-    energy: energy as EnergyBand,
-    hunger: hunger as HungerBand,
-    foodDirection: foodDirection as FoodDirection,
-    foodDistance: foodDistance as FoodDistance,
-    obstacleAhead: obstacleAhead as ObstacleAhead,
+    energy,
+    hunger,
+    foodDirection,
+    foodDistance,
+    obstacleAhead,
+    terrain,
+    terrainAhead,
+    forage,
+    nearbyTool,
+    heldTool,
+    agentDirection,
+    agentDistance,
+    health,
   }
+}
+
+function nearbyToolToken(toolType: ToolType): NearbyTool {
+  if (toolType === 'basket') return 'basket'
+  if (toolType === 'digging_stick') return 'stick'
+  if (toolType === 'spear') return 'spear'
+  return 'shield'
+}
+
+function heldToolPrefix(toolType: ToolType): 'basket' | 'stick' | 'spear' | 'shield' {
+  if (toolType === 'digging_stick') return 'stick'
+  return toolType
+}
+
+function observeTargetHeading(agent: Agent, target: ForageNode): 'forward' | 'other' {
+  const desired = Math.atan2(target.position.x - agent.position.x, target.position.z - agent.position.z)
+  return Math.abs(shortestAngleDelta(agent.rotation, desired)) <= Math.PI / 4 ? 'forward' : 'other'
+}
+
+export function lookAheadPoint(agent: Pick<Agent, 'position' | 'rotation'>): { x: number; z: number } {
+  return {
+    x: agent.position.x + Math.sin(agent.rotation) * AGENT_LOOKAHEAD,
+    z: agent.position.z + Math.cos(agent.rotation) * AGENT_LOOKAHEAD,
+  }
+}
+
+function isToken<T extends string>(value: string | undefined, allowed: readonly T[]): value is T {
+  return typeof value === 'string' && allowed.includes(value as T)
 }

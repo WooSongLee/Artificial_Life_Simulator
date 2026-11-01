@@ -2,15 +2,11 @@ import type { Rng } from '../utils/random'
 import { GENOME_GENES, type Genome } from './types'
 
 export function crossoverGenomes(parentA: Genome, parentB: Genome, rng: Rng): Genome {
-  return {
-    speed: pickGene(parentA.speed, parentB.speed, rng),
-    vision: pickGene(parentA.vision, parentB.vision, rng),
-    energyEfficiency: pickGene(parentA.energyEfficiency, parentB.energyEfficiency, rng),
-    learningRate: pickGene(parentA.learningRate, parentB.learningRate, rng),
-    explorationRate: pickGene(parentA.explorationRate, parentB.explorationRate, rng),
-    libido: pickGene(parentA.libido, parentB.libido, rng),
-    lifespan: pickGene(parentA.lifespan, parentB.lifespan, rng),
+  const child = {} as Genome
+  for (const gene of GENOME_GENES) {
+    child[gene] = pickGene(parentA[gene], parentB[gene], rng)
   }
+  return child
 }
 
 function pickGene(left: number, right: number, rng: Rng): number {

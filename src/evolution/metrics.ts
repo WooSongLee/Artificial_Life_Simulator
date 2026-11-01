@@ -1,60 +1,43 @@
 import { getBrain } from '../learning/brain'
 import type { Agent } from '../types/agent'
+import { GENOME_GENES, type Genome, type GenomeGene } from './types'
 
-export interface GenomeAverages {
-  speed: number
-  vision: number
-  energyEfficiency: number
-  learningRate: number
-  explorationRate: number
-  libido: number
-  lifespan: number
+export type GenomeAverages = Genome & {
   sampleCount: number
 }
 
+function emptyAverages(): GenomeAverages {
+  const averages = { sampleCount: 0 } as GenomeAverages
+  for (const gene of GENOME_GENES) {
+    averages[gene] = 0
+  }
+  return averages
+}
+
 export function averageGenomes(agents: readonly Agent[]): GenomeAverages {
-  if (agents.length === 0) {
-    return {
-      speed: 0,
-      vision: 0,
-      energyEfficiency: 0,
-      learningRate: 0,
-      explorationRate: 0,
-      libido: 0,
-      lifespan: 0,
-      sampleCount: 0,
+  if (agents.length === 0) return emptyAverages()
+
+  const sums = emptyAverages()
+  for (const agent of agents) {
+    for (const gene of GENOME_GENES) {
+      sums[gene] += agent.genome[gene]
     }
   }
 
-  let speed = 0
-  let vision = 0
-  let energyEfficiency = 0
-  let learningRate = 0
-  let explorationRate = 0
-  let libido = 0
-  let lifespan = 0
-
-  for (const agent of agents) {
-    speed += agent.genome.speed
-    vision += agent.genome.vision
-    energyEfficiency += agent.genome.energyEfficiency
-    learningRate += agent.genome.learningRate
-    explorationRate += agent.genome.explorationRate
-    libido += agent.genome.libido
-    lifespan += agent.genome.lifespan
-  }
-
   const n = agents.length
-  return {
-    speed: speed / n,
-    vision: vision / n,
-    energyEfficiency: energyEfficiency / n,
-    learningRate: learningRate / n,
-    explorationRate: explorationRate / n,
-    libido: libido / n,
-    lifespan: lifespan / n,
-    sampleCount: n,
+  const averages = { sampleCount: n } as GenomeAverages
+  for (const gene of GENOME_GENES) {
+    averages[gene] = sums[gene] / n
   }
+  return averages
+}
+
+export function genomeFromAverages(averages: GenomeAverages): Genome {
+  const genome = {} as Genome
+  for (const gene of GENOME_GENES) {
+    genome[gene] = averages[gene]
+  }
+  return genome
 }
 
 export function averageLifetimeReward(agents: readonly Agent[]): {
@@ -77,3 +60,20 @@ export function averageLifetimeReward(agents: readonly Agent[]): {
   }
 }
 
+export function geneLabel(gene: GenomeGene): string {
+  return GENE_LABELS[gene]
+}
+
+export const GENE_LABELS: Record<GenomeGene, string> = {
+  speed: 'Speed',
+  vision: 'Vision',
+  energyEfficiency: 'Energy Efficiency',
+  learningRate: 'Learning Rate',
+  explorationRate: 'Exploration Rate',
+  libido: 'Libido',
+  lifespan: 'Lifespan',
+  strength: 'Strength',
+  aggression: 'Aggression',
+  caution: 'Caution',
+  toolAffinity: 'Tool Affinity',
+}

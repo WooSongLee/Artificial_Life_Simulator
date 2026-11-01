@@ -1,6 +1,7 @@
 import type { ExperimentIdentity, ExperimentRecord } from '../experiments/types'
 import type { EvolutionConfig, GenerationRecord } from '../evolution/types'
-import type { LearningConfig, RewardConfig } from '../learning/types'
+import type { IntervalActionAnalytics } from '../learning/analytics'
+import type { AgentAction, LearningConfig, RewardConfig } from '../learning/types'
 import type { AgentStats, AgentTrail } from './agent'
 import type { WorldConfig, WorldObjectType, WorldState } from './world'
 
@@ -11,11 +12,15 @@ export interface ViewerSettings {
   showTrees: boolean
   showRocks: boolean
   showFood: boolean
+  showForage: boolean
+  showTools: boolean
   showAgents: boolean
   showAgentTrails: boolean
   showVisionRange: boolean
   showFoodSeek: boolean
   showActionMarkers: boolean
+  showActionCues: boolean
+  followSelectedAgent: boolean
 }
 
 export interface LearningHistoryPoint {
@@ -29,6 +34,8 @@ export interface LearningHistoryPoint {
   populationSize: number
   hasLearningSamples: boolean
   hasSurvivalSamples: boolean
+  actionCounts?: Record<AgentAction, number>
+  analytics?: IntervalActionAnalytics
 }
 
 export interface LearningHistoryState {
@@ -45,6 +52,9 @@ export interface WorldStats {
   treeCount: number
   rockCount: number
   foodCount: number
+  berryCount: number
+  rootCount: number
+  toolCount: number
   totalAgents: number
   aliveCount: number
   deadCount: number
@@ -81,6 +91,7 @@ export interface SimulationState {
   pendingWorldConfig: WorldConfig | null
   experiment: ExperimentIdentity
   hydrated: boolean
+  migrationNotice: string | null
 }
 
 export interface SimulationActions {
@@ -92,6 +103,7 @@ export interface SimulationActions {
   selectObject: (id: string | null) => void
   setSetting: <K extends keyof ViewerSettings>(key: K, value: ViewerSettings[K]) => void
   setLearningEnabled: (enabled: boolean) => void
+  setGeneticsEnabled: (enabled: boolean) => void
   setInheritQTable: (enabled: boolean) => void
   setPopulationLimit: (limit: number) => void
   setAgentCount: (count: number) => void
@@ -102,6 +114,7 @@ export interface SimulationActions {
   setExperimentName: (name: string) => void
   newExperiment: () => void
   loadExperimentRecord: (record: ExperimentRecord) => void
+  dismissMigrationNotice: () => void
   markSaved: (updatedAt: string) => void
   markHydrated: () => void
   addObject: (type: WorldObjectType) => void

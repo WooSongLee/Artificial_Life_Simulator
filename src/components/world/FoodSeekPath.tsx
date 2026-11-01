@@ -8,11 +8,11 @@ export function FoodSeekPath() {
   const agent = useSimulationStore((state) =>
     selectedId ? (state.world.agents.find((item) => item.id === selectedId) ?? null) : null,
   )
-  const objects = useSimulationStore((state) => state.world.objects)
+  const world = useSimulationStore((state) => state.world)
 
   if (!enabled || !agent || !agent.alive) return null
 
-  const food = findNearestFood(agent, objects)
+  const food = findNearestFood(agent, world)
   if (!food) return null
 
   return (

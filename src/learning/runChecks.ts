@@ -42,7 +42,7 @@ function encodeIsDeterministic(): void {
   const first = encodeObservation(observeAgent(agent, world))
   const second = encodeObservation(observeAgent(agent, world))
   assert(first === second, 'same observation must encode to the same state key')
-  assert(first.split('|').length === 5, 'state key must contain five discrete features')
+  assert(first.split('|').length === 13, 'state key must contain thirteen discrete features')
 }
 
 function qUpdateMatchesFormula(): void {
@@ -61,6 +61,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 20,
         hungerBefore: 80,
         foodInEatRange: true,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === 10,
@@ -76,6 +78,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 80,
         hungerBefore: 10,
         foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === 0,
@@ -91,6 +95,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 80,
         hungerBefore: 10,
         foodInEatRange: true,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === -1,
@@ -106,6 +112,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 80,
         hungerBefore: 10,
         foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === 0,
@@ -133,6 +141,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 80,
         hungerBefore: 10,
         foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === -2,
@@ -148,6 +158,8 @@ function rewardsMatchEvents(): void {
         energyBefore: 2,
         hungerBefore: 90,
         foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
       },
       DEFAULT_REWARD_CONFIG,
     ) === -20,
@@ -180,6 +192,11 @@ function learningOffDoesNotWriteQTable(): void {
       collided: false,
       died: false,
       consumedFoodId: null,
+      pickedUpToolId: null,
+      gatheredNodeId: null,
+      gatheredAmount: 0,
+      durabilityDelta: 0,
+      targetKind: null,
     },
     agent.energy,
     agent.hunger,

@@ -1,4 +1,5 @@
 import { createBrain, getBrain } from '../learning/brain'
+import { ACTION_SCHEMA_VERSION, OBSERVATION_SCHEMA_VERSION } from '../learning/schema'
 import type { AgentBrain, LearningConfig, StateKey } from '../learning/types'
 import type { Agent } from '../types/agent'
 
@@ -10,6 +11,14 @@ export function cloneQTable(table: Map<StateKey, number[]>): Map<StateKey, numbe
   return cloned
 }
 
+export function canInheritBrain(brain: AgentBrain | undefined): boolean {
+  return (
+    brain !== undefined &&
+    brain.actionSchemaVersion === ACTION_SCHEMA_VERSION &&
+    brain.observationSchemaVersion === OBSERVATION_SCHEMA_VERSION
+  )
+}
+
 export function inheritBrain(
   parentId: string,
   config: LearningConfig,
@@ -17,7 +26,7 @@ export function inheritBrain(
 ): AgentBrain {
   const child = createBrain(config, initialEpsilon)
   const parent = getBrain(parentId)
-  if (parent) {
+  if (canInheritBrain(parent) && parent) {
     child.qTable = cloneQTable(parent.qTable)
   }
   return child

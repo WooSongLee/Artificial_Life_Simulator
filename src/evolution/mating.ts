@@ -1,4 +1,5 @@
 import { createAgent, pruneDeadAgents } from '../simulation/agentFactory'
+import { canDetectAt } from '../simulation/terrain'
 import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
 import { distanceSq } from '../utils/math'
@@ -6,6 +7,7 @@ import type { Rng } from '../utils/random'
 import {
   DESIRE_AFTER_MATING,
   DESIRE_MATE_THRESHOLD,
+  isGeneticsEnabled,
   MATING_DURATION,
   MATING_RANGE,
   MAX_DEAD_AGENTS,
@@ -35,15 +37,15 @@ export function countMatingPairs(agents: readonly Agent[]): number {
   return pairs
 }
 
-export function findNearestMate(agent: Agent, agents: readonly Agent[]): Agent | null {
+export function findNearestMate(agent: Agent, world: WorldState): Agent | null {
   let nearest: Agent | null = null
   let best = Number.POSITIVE_INFINITY
-  const visionSq = agent.vision * agent.vision
 
-  for (const other of agents) {
+  for (const other of world.agents) {
     if (other.id === agent.id || !canStartMating(other)) continue
     const dist = distanceSq(agent.position.x, agent.position.z, other.position.x, other.position.z)
-    if (dist > visionSq || dist >= best) continue
+    if (dist >= best) continue
+    if (!canDetectAt(agent, other.position.x, other.position.z, world, dist)) continue
     best = dist
     nearest = other
   }
@@ -153,6 +155,7 @@ function finishMatingPairs(
         genome: blueprint.genome,
         generation: Math.max(agent.generation, partner.generation) + 1,
         parentIds: blueprint.parentIds,
+        parentGenomes: blueprint.parentGenomes,
         inheritParentId: blueprint.inheritParentId,
         mutatedGenes: blueprint.mutatedGenes,
         near: {
@@ -182,6 +185,23 @@ export function processMating(
   config: EvolutionConfig,
   rng: Rng,
 ): MatingTickResult {
+  if (!isGeneticsEnabled(config.geneticsEnabled)) {
+    const cleared = world.agents.map((agent) =>
+      agent.matingPartnerId === null && agent.matingTimeLeft <= 0 ? agent : clearMating(agent),
+    )
+    const pruned = pruneDeadAgents(cleared, MAX_DEAD_AGENTS)
+    return {
+      world: {
+        ...world,
+        agents: pruned.agents,
+      },
+      born: [],
+      recordedGeneration: null,
+      recordedGenerationStartTick: null,
+      removedAgentIds: pruned.removedIds,
+    }
+  }
+
   const paired = pairNearbyMates(world.agents)
   const finished = finishMatingPairs({ ...world, agents: paired }, paired, config, rng)
   const generation = finished.born.reduce(

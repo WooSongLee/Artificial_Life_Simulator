@@ -8,15 +8,26 @@ import {
 import {
   AGENT_COUNT_PRESETS,
   FOOD_REGEN_RATE_PRESETS,
+  FORAGE_REGEN_RATE_PRESETS,
   MAX_AGENT_COUNT,
+  MAX_BERRY_COUNT,
   MAX_FOOD_COUNT,
+  MAX_ROOT_COUNT,
+  MAX_TOOL_COUNT,
   MIN_AGENT_COUNT,
+  MIN_BERRY_COUNT,
+  MAX_WORLD_SEED,
   MIN_FOOD_COUNT,
+  MIN_ROOT_COUNT,
+  MIN_TOOL_COUNT,
+  MIN_WORLD_SEED,
   OBSTACLE_DENSITY_PRESETS,
+  TERRAIN_PRESET_LABELS,
   WORLD_SIZE_PRESETS,
 } from '../../simulation/constants'
 import { OBJECT_REGISTRY } from '../../simulation/objectRegistry'
 import { useSimulationStore } from '../../store/useSimulationStore'
+import { TERRAIN_PRESETS } from '../../types/terrain'
 import { RESOURCE_DISTRIBUTIONS, type WorldObjectType } from '../../types/world'
 import { Hint } from '../ui/Hint'
 import { NumberField } from '../ui/NumberField'
@@ -40,6 +51,8 @@ export function SettingsPanel() {
   const setLearningConfig = useSimulationStore((state) => state.setLearningConfig)
   const rewardConfig = useSimulationStore((state) => state.rewardConfig)
   const setRewardConfig = useSimulationStore((state) => state.setRewardConfig)
+  const geneticsEnabled = useSimulationStore((state) => state.evolutionConfig.geneticsEnabled)
+  const setGeneticsEnabled = useSimulationStore((state) => state.setGeneticsEnabled)
   const inheritQTable = useSimulationStore((state) => state.evolutionConfig.inheritQTable)
   const setInheritQTable = useSimulationStore((state) => state.setInheritQTable)
   const populationLimit = useSimulationStore((state) => state.evolutionConfig.populationLimit)
@@ -98,6 +111,56 @@ export function SettingsPanel() {
               onSelect={(foodRegenRate) => setWorldConfig({ foodRegenRate })}
               isSelected={(value, selected) => Math.abs(value - selected) < 0.05}
             />
+            <NumberStepper
+              label="Berry Bushes"
+              value={worldConfig.initialBerryCount}
+              min={MIN_BERRY_COUNT}
+              max={MAX_BERRY_COUNT}
+              onChange={(initialBerryCount) => setWorldConfig({ initialBerryCount })}
+            />
+            <NumberStepper
+              label="Root Patches"
+              value={worldConfig.initialRootCount}
+              min={MIN_ROOT_COUNT}
+              max={MAX_ROOT_COUNT}
+              onChange={(initialRootCount) => setWorldConfig({ initialRootCount })}
+            />
+            <Readout label="Forage Regen Rate" value={`${worldConfig.forageRegenRate.toFixed(1)} /s`} />
+            <PresetRow
+              values={FORAGE_REGEN_RATE_PRESETS}
+              selected={worldConfig.forageRegenRate}
+              format={(value) => `${value}`}
+              onSelect={(forageRegenRate) => setWorldConfig({ forageRegenRate })}
+              isSelected={(value, selected) => Math.abs(value - selected) < 0.05}
+            />
+            <NumberStepper
+              label="Baskets"
+              value={worldConfig.initialBasketCount}
+              min={MIN_TOOL_COUNT}
+              max={MAX_TOOL_COUNT}
+              onChange={(initialBasketCount) => setWorldConfig({ initialBasketCount })}
+            />
+            <NumberStepper
+              label="Digging Sticks"
+              value={worldConfig.initialStickCount}
+              min={MIN_TOOL_COUNT}
+              max={MAX_TOOL_COUNT}
+              onChange={(initialStickCount) => setWorldConfig({ initialStickCount })}
+            />
+            <NumberStepper
+              label="Spears"
+              value={worldConfig.initialSpearCount}
+              min={MIN_TOOL_COUNT}
+              max={MAX_TOOL_COUNT}
+              onChange={(initialSpearCount) => setWorldConfig({ initialSpearCount })}
+            />
+            <NumberStepper
+              label="Shields"
+              value={worldConfig.initialShieldCount}
+              min={MIN_TOOL_COUNT}
+              max={MAX_TOOL_COUNT}
+              onChange={(initialShieldCount) => setWorldConfig({ initialShieldCount })}
+            />
             <Readout
               label="Obstacle Density"
               value={`${Math.round(worldConfig.obstacleDensity * 100)}%`}
@@ -124,14 +187,49 @@ export function SettingsPanel() {
                 </PresetButton>
               ))}
             </div>
+            <Readout
+              label="Terrain Mix"
+              value={TERRAIN_PRESET_LABELS[worldConfig.terrainPreset]}
+            />
+            <div className="grid grid-cols-3 gap-1">
+              {TERRAIN_PRESETS.map((preset) => (
+                <PresetButton
+                  key={preset}
+                  active={worldConfig.terrainPreset === preset}
+                  onClick={() => setWorldConfig({ terrainPreset: preset })}
+                >
+                  {TERRAIN_PRESET_LABELS[preset]}
+                </PresetButton>
+              ))}
+            </div>
+            <NumberField
+              label="World Seed"
+              value={worldConfig.seed}
+              min={MIN_WORLD_SEED}
+              max={MAX_WORLD_SEED}
+              step={1}
+              digits={0}
+              onChange={(seed) => setWorldConfig({ seed })}
+            />
+            <button
+              type="button"
+              onClick={() =>
+                setWorldConfig({
+                  seed: MIN_WORLD_SEED + Math.floor(Math.random() * (MAX_WORLD_SEED - MIN_WORLD_SEED)),
+                })
+              }
+              className="w-full border border-lab-border bg-lab-elevated px-2 py-1 text-[12px] text-lab-text hover:border-lab-accent/40"
+            >
+              New Seed
+            </button>
             <Readout label="Simulation Speed" value={formatSpeed(speed)} />
             {pendingWorldConfig ? (
               <p className="pt-1 text-[12px] leading-5 text-lab-warn">
-                Size, food, obstacles, and distribution apply on Reset.
+                Size, food, forage, tools, obstacles, distribution, terrain, and seed apply on Reset.
               </p>
             ) : (
               <p className="pt-1 text-[12px] leading-5 text-lab-muted">
-                Idle changes rebuild the world. Food regen rate applies immediately.
+                Idle changes rebuild the world. Food and forage regen rates apply immediately.
               </p>
             )}
           </div>
@@ -216,6 +314,24 @@ export function SettingsPanel() {
               onChange={(eatSuccess) => setRewardConfig({ eatSuccess })}
             />
             <NumberField
+              label="Gather / unit"
+              value={rewardConfig.gatherUnit}
+              min={REWARD_CONFIG_RANGES.gatherUnit.min}
+              max={REWARD_CONFIG_RANGES.gatherUnit.max}
+              step={0.5}
+              digits={1}
+              onChange={(gatherUnit) => setRewardConfig({ gatherUnit })}
+            />
+            <NumberField
+              label="Pick Up"
+              value={rewardConfig.pickupSuccess}
+              min={REWARD_CONFIG_RANGES.pickupSuccess.min}
+              max={REWARD_CONFIG_RANGES.pickupSuccess.max}
+              step={0.5}
+              digits={1}
+              onChange={(pickupSuccess) => setRewardConfig({ pickupSuccess })}
+            />
+            <NumberField
               label="Wasted Energy"
               value={rewardConfig.wastedEnergy}
               min={REWARD_CONFIG_RANGES.wastedEnergy.min}
@@ -251,6 +367,51 @@ export function SettingsPanel() {
               digits={1}
               onChange={(efficientRest) => setRewardConfig({ efficientRest })}
             />
+            <NumberField
+              label="Attack Hit / dmg"
+              value={rewardConfig.attackHitUnit}
+              min={REWARD_CONFIG_RANGES.attackHitUnit.min}
+              max={REWARD_CONFIG_RANGES.attackHitUnit.max}
+              step={0.1}
+              digits={2}
+              onChange={(attackHitUnit) => setRewardConfig({ attackHitUnit })}
+            />
+            <NumberField
+              label="Attack Miss"
+              value={rewardConfig.attackMiss}
+              min={REWARD_CONFIG_RANGES.attackMiss.min}
+              max={REWARD_CONFIG_RANGES.attackMiss.max}
+              step={0.1}
+              digits={1}
+              onChange={(attackMiss) => setRewardConfig({ attackMiss })}
+            />
+            <NumberField
+              label="Damage Taken / dmg"
+              value={rewardConfig.damageTakenUnit}
+              min={REWARD_CONFIG_RANGES.damageTakenUnit.min}
+              max={REWARD_CONFIG_RANGES.damageTakenUnit.max}
+              step={0.1}
+              digits={2}
+              onChange={(damageTakenUnit) => setRewardConfig({ damageTakenUnit })}
+            />
+            <NumberField
+              label="Defend Reduce / dmg"
+              value={rewardConfig.defendReduceUnit}
+              min={REWARD_CONFIG_RANGES.defendReduceUnit.min}
+              max={REWARD_CONFIG_RANGES.defendReduceUnit.max}
+              step={0.1}
+              digits={2}
+              onChange={(defendReduceUnit) => setRewardConfig({ defendReduceUnit })}
+            />
+            <NumberField
+              label="Flee Success"
+              value={rewardConfig.fleeSuccess}
+              min={REWARD_CONFIG_RANGES.fleeSuccess.min}
+              max={REWARD_CONFIG_RANGES.fleeSuccess.max}
+              step={0.1}
+              digits={1}
+              onChange={(fleeSuccess) => setRewardConfig({ fleeSuccess })}
+            />
           </div>
         </section>
 
@@ -259,6 +420,12 @@ export function SettingsPanel() {
             진화
           </SectionLabel>
           <div className="mt-2 space-y-1">
+            <Toggle
+              label="유전 활성화"
+              checked={geneticsEnabled}
+              onChange={setGeneticsEnabled}
+              title="끄면 교배·돌연변이·유전 bias·노화 사망을 멈춘다. 학습만 관찰할 때 쓴다. 시작 전이면 모든 개체가 같은 기본 Genome으로 다시 만들어진다."
+            />
             <Toggle
               label="Q-Table 상속"
               checked={inheritQTable}
@@ -275,8 +442,8 @@ export function SettingsPanel() {
             />
             <Readout label="돌연변이 확률" value={`${(mutationRate * 100).toFixed(0)}% / gene`} />
             <p className="pt-1 text-[12px] leading-5 text-lab-muted">
-              성욕이 높은 성숙 개체가 가까이 오면 교배한다. 교배 중에는 둘 다 에너지가 줄고, 끝나면
-              성욕이 충족되며 자식이 태어난다. 수명이 다하면 사망한다. Q-Table 상속은 기본 꺼짐이다.
+              유전이 꺼져 있으면 교배와 노화 사망이 없고, 모든 새 개체는 같은 기본 Genome을 쓴다.
+              켜면 성욕이 찬 성숙 개체가 가까이 올 때 교배한다. Q-Table 상속은 기본 꺼짐이다.
             </p>
           </div>
         </section>
@@ -303,6 +470,16 @@ export function SettingsPanel() {
               label="먹이"
               checked={settings.showFood}
               onChange={(checked) => setSetting('showFood', checked)}
+            />
+            <Toggle
+              label="채집 자원"
+              checked={settings.showForage}
+              onChange={(checked) => setSetting('showForage', checked)}
+            />
+            <Toggle
+              label="도구"
+              checked={settings.showTools}
+              onChange={(checked) => setSetting('showTools', checked)}
             />
             <Toggle
               label="에이전트"
@@ -335,6 +512,11 @@ export function SettingsPanel() {
               checked={settings.showActionMarkers}
               onChange={(checked) => setSetting('showActionMarkers', checked)}
             />
+            <Toggle
+              label="행동 대상 표시"
+              checked={settings.showActionCues}
+              onChange={(checked) => setSetting('showActionCues', checked)}
+            />
           </div>
         </section>
 
@@ -359,13 +541,21 @@ export function SettingsPanel() {
 
         <section>
           <SectionLabel>카메라</SectionLabel>
-          <button
-            type="button"
-            onClick={resetCamera}
-            className="mt-3 w-full border border-lab-border bg-lab-elevated px-3 py-2 text-[13px] text-lab-text transition-colors hover:border-lab-accent/50"
-          >
-            시점 초기화
-          </button>
+          <div className="mt-2 space-y-1">
+            <Toggle
+              label="선택 개체 추적"
+              checked={settings.followSelectedAgent}
+              onChange={(checked) => setSetting('followSelectedAgent', checked)}
+              title="개체를 선택하면 카메라가 그 개체를 따라간다. 회전·확대는 그대로 된다."
+            />
+            <button
+              type="button"
+              onClick={resetCamera}
+              className="w-full border border-lab-border bg-lab-elevated px-3 py-2 text-[13px] text-lab-text transition-colors hover:border-lab-accent/50"
+            >
+              시점 초기화
+            </button>
+          </div>
         </section>
       </div>
     </aside>

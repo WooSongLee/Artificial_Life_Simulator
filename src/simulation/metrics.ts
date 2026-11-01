@@ -1,4 +1,7 @@
+import { actionCountRatios, consumeIntervalActionCounts, sumActionCounts } from '../learning/actionEvents'
+import { summarizeActionAnalytics, type ActionWindowAnalytics } from '../learning/analytics'
 import { mean, summarizeLearning } from '../learning/brain'
+import type { AgentAction } from '../learning/types'
 import type { Agent } from '../types/agent'
 import type { LearningHistoryPoint, LearningHistoryState } from '../types/simulation'
 import { summarizeAgents } from '../utils/agentStats'
@@ -19,6 +22,9 @@ export interface ComparisonWindow {
   explorationRate: number | null
   learningSteps: number
   populationSize: number
+  actionCounts: Record<AgentAction, number> | null
+  actionRatios: Record<AgentAction, number> | null
+  analytics: ActionWindowAnalytics | null
 }
 
 export interface LearningComparison {
@@ -37,6 +43,7 @@ export function collectLearningSample(
   tick: number,
   agents: Agent[],
   learningEnabled: boolean,
+  actionCounts?: Record<AgentAction, number>,
 ): LearningHistoryPoint {
   const learning = summarizeLearning(agents, learningEnabled)
   const population = summarizeAgents(agents)
@@ -52,6 +59,8 @@ export function collectLearningSample(
     populationSize: population.aliveCount,
     hasLearningSamples: learning.hasLearningSamples,
     hasSurvivalSamples: population.deadCount > 0,
+    actionCounts,
+    analytics: undefined,
   }
 }
 
@@ -79,7 +88,11 @@ export function recordLearningHistory(
     return previous
   }
 
-  const point = collectLearningSample(tick, agents, learningEnabled)
+  const interval = consumeIntervalActionCounts()
+  const point = {
+    ...collectLearningSample(tick, agents, learningEnabled, interval.counts),
+    analytics: interval.analytics,
+  }
   const series =
     previous.series.length < LEARNING_HISTORY_MAX_POINTS
       ? [...previous.series, point]
@@ -100,6 +113,7 @@ export function summarizeWindow(points: readonly LearningHistoryPoint[]): Compar
   const rewardPoints = points.filter((point) => point.hasLearningSamples)
   const survivalPoints = points.filter((point) => point.hasSurvivalSamples)
   const explorePoints = points.filter((point) => point.hasLearningSamples)
+  const windowActionCounts = sumActionCounts(points.map((point) => point.actionCounts))
 
   return {
     fromTime: first.time,
@@ -113,6 +127,11 @@ export function summarizeWindow(points: readonly LearningHistoryPoint[]): Compar
       explorePoints.length === 0 ? null : mean(explorePoints.map((point) => point.explorationRate)),
     learningSteps: last.learningSteps - first.learningSteps,
     populationSize: mean(points.map((point) => point.populationSize)),
+    actionCounts: windowActionCounts,
+    actionRatios: actionCountRatios(windowActionCounts),
+    analytics: summarizeActionAnalytics(
+      points.flatMap((point) => (point.analytics ? [point.analytics] : [])),
+    ),
   }
 }
 

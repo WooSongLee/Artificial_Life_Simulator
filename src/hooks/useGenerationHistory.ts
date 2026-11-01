@@ -8,6 +8,7 @@ export function useGenerationHistory() {
     currentReward: averageLifetimeReward(state.world.agents),
     generation: state.world.generation,
     inheritQTable: state.evolutionConfig.inheritQTable,
+    geneticsEnabled: state.evolutionConfig.geneticsEnabled,
     mutationRate: state.evolutionConfig.mutationRate,
     populationLimit: state.evolutionConfig.populationLimit,
   }))

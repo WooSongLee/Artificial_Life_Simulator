@@ -1,5 +1,5 @@
 import { getBrain, resetBrains, setBrain } from '../learning/brain'
-import { DEFAULT_LEARNING_CONFIG } from '../learning/constants'
+import { DEFAULT_LEARNING_CONFIG, DEFAULT_REWARD_CONFIG } from '../learning/constants'
 import { createEmptyQValues } from '../learning/qLearning'
 import { updateAgent } from '../simulation/agentSystem'
 import { DEFAULT_WORLD_CONFIG, SIMULATION_STEP_DT } from '../simulation/constants'
@@ -14,6 +14,8 @@ import { processMating } from './mating'
 import { mutateGenome } from './mutation'
 import { breedChild, canStartMating, isMating } from './reproduction'
 import { GENOME_GENES } from './types'
+
+const geneticsOn = { ...DEFAULT_EVOLUTION_CONFIG, geneticsEnabled: true }
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -34,6 +36,10 @@ function genomeClampAndRange(): void {
     explorationRate: 2,
     libido: 9,
     lifespan: 1,
+    strength: 9,
+    aggression: -2,
+    caution: 8,
+    toolAffinity: 0,
   })
 
   assert(genome.speed === GENE_RANGES.speed.max, 'speed must clamp to max')
@@ -43,6 +49,10 @@ function genomeClampAndRange(): void {
   assert(genome.explorationRate === GENE_RANGES.explorationRate.max, 'exploration must clamp')
   assert(genome.libido === GENE_RANGES.libido.max, 'libido must clamp to max')
   assert(genome.lifespan === GENE_RANGES.lifespan.min, 'lifespan must clamp to min')
+  assert(genome.strength === GENE_RANGES.strength.max, 'strength must clamp to max')
+  assert(genome.aggression === GENE_RANGES.aggression.min, 'aggression must clamp to min')
+  assert(genome.caution === GENE_RANGES.caution.max, 'caution must clamp to max')
+  assert(genome.toolAffinity === GENE_RANGES.toolAffinity.min, 'toolAffinity must clamp to min')
 }
 
 function crossoverCopiesParentGenes(): void {
@@ -114,7 +124,7 @@ function readyMates(world = createInitialWorld({ ...DEFAULT_WORLD_CONFIG, agentC
 
 function liveBreedingCreatesChild(): void {
   const { world } = readyMates()
-  const paired = processMating(world, 10, { ...DEFAULT_EVOLUTION_CONFIG, mutationRate: 0 }, () => 0.25)
+  const paired = processMating(world, 10, { ...geneticsOn, mutationRate: 0 }, () => 0.25)
   assert(paired.world.agents.filter(isMating).length === 2, 'nearby aroused agents must start mating')
   assert(paired.born.length === 0, 'a child is not born until mating finishes')
 
@@ -124,7 +134,7 @@ function liveBreedingCreatesChild(): void {
       agents: paired.world.agents.map((agent) => ({ ...agent, matingTimeLeft: 0 })),
     },
     20,
-    { ...DEFAULT_EVOLUTION_CONFIG, mutationRate: 0 },
+    { ...geneticsOn, mutationRate: 0 },
     () => 0.25,
   )
 
@@ -149,14 +159,14 @@ function liveBreedingCreatesChild(): void {
 
 function populationLimitBlocksBirth(): void {
   const { world } = readyMates()
-  const paired = processMating(world, 4, { ...DEFAULT_EVOLUTION_CONFIG, mutationRate: 0 }, () => 0.2)
+  const paired = processMating(world, 4, { ...geneticsOn, mutationRate: 0 }, () => 0.2)
   const finished = processMating(
     {
       ...paired.world,
       agents: paired.world.agents.map((agent) => ({ ...agent, matingTimeLeft: 0 })),
     },
     5,
-    { ...DEFAULT_EVOLUTION_CONFIG, populationLimit: 2, mutationRate: 0 },
+    { ...geneticsOn, populationLimit: 2, mutationRate: 0 },
     () => 0.2,
   )
 
@@ -180,11 +190,14 @@ function lifespanEndsAnAgent(): void {
     learningEnabled: false,
     learningConfig: DEFAULT_LEARNING_CONFIG,
     rewardConfig: {
+      ...DEFAULT_REWARD_CONFIG,
       eatSuccess: 1,
       wastedEnergy: 0,
       collision: 0,
       death: 0,
       efficientRest: 0,
+      gatherUnit: 0,
+      pickupSuccess: 0,
     },
     rng: Math.random,
   })
@@ -211,7 +224,7 @@ function onlyLivingAdultsMate(): void {
   assert(!canStartMating(mixed.agents[1]!), 'immature agents must not mate')
   assert(canStartMating(mixed.agents[2]!), 'a living adult with desire can mate')
 
-  const next = processMating(mixed, 8, { ...DEFAULT_EVOLUTION_CONFIG, mutationRate: 0 }, () => 0.3)
+  const next = processMating(mixed, 8, { ...geneticsOn, mutationRate: 0 }, () => 0.3)
   assert(next.world.agents.filter(isMating).length === 0, 'a single eligible adult cannot pair')
 }
 
@@ -250,6 +263,8 @@ function generationRecordUsesMeasuredValues(): void {
   assert(almostEqual(record.averageSpeed, 1.5), 'average speed must come from genomes')
   assert(almostEqual(record.averageVision, 9), 'average vision must come from genomes')
   assert(almostEqual(record.averageEnergyEfficiency, 1.05), 'average efficiency must come from genomes')
+  assert(record.averageStrength !== null, 'new generation records must store Strength')
+  assert(record.averageAggression !== null, 'new generation records must store Aggression')
   assert(almostEqual(record.averageReward, 2), 'average reward must be totalReward / steps')
   assert(record.hasLearningSamples, 'learning samples must be marked when steps exist')
   assert(record.endReason === 'birth', 'record must keep the real end reason')

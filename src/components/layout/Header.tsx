@@ -4,6 +4,7 @@ import { SIMULATION_STATUS_LABEL } from '../../utils/status'
 export function Header() {
   const status = useSimulationStore((state) => state.status)
   const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const geneticsEnabled = useSimulationStore((state) => state.evolutionConfig.geneticsEnabled)
   const experiment = useSimulationStore((state) => state.experiment)
 
   return (
@@ -37,6 +38,9 @@ export function Header() {
         </span>
         <span className="font-mono tracking-wide text-lab-muted uppercase">
           · {learningEnabled ? 'Learning On' : 'Learning Off'}
+        </span>
+        <span className="font-mono tracking-wide text-lab-muted uppercase">
+          · {geneticsEnabled ? 'Genetics On' : 'Genetics Off'}
         </span>
       </div>
     </header>

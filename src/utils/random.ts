@@ -15,3 +15,7 @@ export function mulberry32(seed: number): Rng {
 export function randomInRange(rng: Rng, min: number, max: number): number {
   return min + (max - min) * rng()
 }
+
+export function mixSeed(seed: number, salt: number): number {
+  return (Math.imul(seed ^ salt, 0x9e3779b9) >>> 0)
+}

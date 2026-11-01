@@ -1,6 +1,7 @@
 import { OrbitControls } from '@react-three/drei'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useLayoutEffect, useRef } from 'react'
+import { Vector3 } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import {
   CAMERA_MAX_POLAR,
@@ -13,6 +14,19 @@ import {
 import { clamp } from '../../utils/math'
 import { useSimulationStore } from '../../store/useSimulationStore'
 
+const FOLLOW_HEIGHT = 0.45
+const FOLLOW_LERP = 6
+
+function followTargetForSelection(): [number, number, number] {
+  const state = useSimulationStore.getState()
+  if (!state.settings.followSelectedAgent || !state.selectedObjectId) {
+    return [...DEFAULT_CAMERA_TARGET]
+  }
+  const agent = state.world.agents.find((item) => item.id === state.selectedObjectId)
+  if (!agent?.alive) return [...DEFAULT_CAMERA_TARGET]
+  return [agent.position.x, FOLLOW_HEIGHT, agent.position.z]
+}
+
 export function CameraRig() {
   const controlsRef = useRef<OrbitControlsImpl>(null)
   const camera = useThree((state) => state.camera)
@@ -20,19 +34,40 @@ export function CameraRig() {
   const worldSize = useSimulationStore((state) => state.world.config.size)
   const scale = worldSize / DEFAULT_WORLD_CONFIG.size
   const maxDistance = clamp(90 * scale, 40, 160)
+  const desiredTarget = useRef(new Vector3())
+  const cameraOffset = useRef(new Vector3())
 
   useLayoutEffect(() => {
+    const target = followTargetForSelection()
     camera.position.set(
-      DEFAULT_CAMERA_POSITION[0] * scale,
+      target[0] + DEFAULT_CAMERA_POSITION[0] * scale,
       DEFAULT_CAMERA_POSITION[1] * scale,
-      DEFAULT_CAMERA_POSITION[2] * scale,
+      target[2] + DEFAULT_CAMERA_POSITION[2] * scale,
     )
-    camera.lookAt(...DEFAULT_CAMERA_TARGET)
+    camera.lookAt(...target)
     if (controlsRef.current) {
-      controlsRef.current.target.set(...DEFAULT_CAMERA_TARGET)
+      controlsRef.current.target.set(...target)
       controlsRef.current.update()
     }
   }, [camera, cameraResetToken, scale])
+
+  useFrame((_, delta) => {
+    const controls = controlsRef.current
+    if (!controls) return
+
+    const state = useSimulationStore.getState()
+    if (!state.settings.followSelectedAgent || !state.selectedObjectId) return
+
+    const agent = state.world.agents.find((item) => item.id === state.selectedObjectId)
+    if (!agent?.alive) return
+
+    desiredTarget.current.set(agent.position.x, FOLLOW_HEIGHT, agent.position.z)
+    cameraOffset.current.copy(camera.position).sub(controls.target)
+    const alpha = 1 - Math.exp(-FOLLOW_LERP * Math.min(delta, 0.1))
+    controls.target.lerp(desiredTarget.current, alpha)
+    camera.position.copy(controls.target).add(cameraOffset.current)
+    controls.update()
+  })
 
   return (
     <OrbitControls

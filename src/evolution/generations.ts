@@ -3,6 +3,7 @@ import { SIMULATION_STEP_DT } from '../simulation/constants'
 import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
 import { MAX_GENERATION_RECORDS } from './constants'
+import { averageGenomes } from './metrics'
 import type { GenerationEndReason, GenerationRecord, MutationSummary } from './types'
 
 export function generationElapsed(generationStartTick: number, tick: number): number {
@@ -45,21 +46,11 @@ export function collectGenerationRecord(
   const populationSize = agents.length
   const aliveCount = agents.filter((agent) => agent.alive).length
   let ageSum = 0
-  let speedSum = 0
-  let visionSum = 0
-  let efficiencySum = 0
-  let learningRateSum = 0
-  let explorationSum = 0
   let rewardPerStepSum = 0
   let rewardSamples = 0
 
   for (const agent of agents) {
     ageSum += agent.age
-    speedSum += agent.genome.speed
-    visionSum += agent.genome.vision
-    efficiencySum += agent.genome.energyEfficiency
-    learningRateSum += agent.genome.learningRate
-    explorationSum += agent.genome.explorationRate
 
     const brain = getBrain(agent.id)
     if (!brain || brain.totalSteps === 0) continue
@@ -68,6 +59,7 @@ export function collectGenerationRecord(
   }
 
   const divisor = populationSize === 0 ? 1 : populationSize
+  const averages = averageGenomes(agents)
 
   return {
     generation,
@@ -76,11 +68,15 @@ export function collectGenerationRecord(
     survivalRate: populationSize === 0 ? 0 : aliveCount / populationSize,
     averageLifespan: populationSize === 0 ? 0 : ageSum / divisor,
     averageReward: rewardSamples === 0 ? 0 : rewardPerStepSum / rewardSamples,
-    averageSpeed: populationSize === 0 ? 0 : speedSum / divisor,
-    averageVision: populationSize === 0 ? 0 : visionSum / divisor,
-    averageEnergyEfficiency: populationSize === 0 ? 0 : efficiencySum / divisor,
-    averageLearningRate: populationSize === 0 ? 0 : learningRateSum / divisor,
-    averageExplorationRate: populationSize === 0 ? 0 : explorationSum / divisor,
+    averageSpeed: populationSize === 0 ? 0 : averages.speed,
+    averageVision: populationSize === 0 ? 0 : averages.vision,
+    averageEnergyEfficiency: populationSize === 0 ? 0 : averages.energyEfficiency,
+    averageLearningRate: populationSize === 0 ? 0 : averages.learningRate,
+    averageExplorationRate: populationSize === 0 ? 0 : averages.explorationRate,
+    averageStrength: populationSize === 0 ? 0 : averages.strength,
+    averageAggression: populationSize === 0 ? 0 : averages.aggression,
+    averageCaution: populationSize === 0 ? 0 : averages.caution,
+    averageToolAffinity: populationSize === 0 ? 0 : averages.toolAffinity,
     hasLearningSamples: rewardSamples > 0,
     mutation: summarizeMutations(agents, mutationRate),
     endedAtTick: tick,
@@ -101,4 +97,12 @@ export function appendGenerationRecord(
 
 export function hasGenerationRecord(history: readonly GenerationRecord[], generation: number): boolean {
   return history.some((record) => record.generation === generation)
+}
+
+export function recordedAverage(
+  record: GenerationRecord,
+  key: 'averageStrength' | 'averageAggression' | 'averageCaution' | 'averageToolAffinity',
+): number | null {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }

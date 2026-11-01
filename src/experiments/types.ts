@@ -4,6 +4,8 @@ import type { LearningConfig, RewardConfig } from '../learning/types'
 import type { LearningHistoryState, SimulationStatus } from '../types/simulation'
 import type { WorldConfig, WorldState } from '../types/world'
 
+export type ExperimentPolicyMode = 'learning' | 'frozen-q' | 'random-like'
+
 export interface ExperimentIdentity {
   id: string
   name: string
@@ -23,10 +25,27 @@ export interface ExperimentStatistics {
   totalAgents: number
   simulationTime: number
   tick: number
+  foodEaten: number
+  resourcesGathered: number
+  toolUsageAttempts: number
+  toolUsageSuccesses: number
+  toolUsageSuccessRate: number | null
+  damageDealt: number
+  damageReceived: number
+  combatDeaths: number
+  combatSurvivalRate: number | null
+  reproductionCount: number
+  visitedStates: number
+  learningEnabled: boolean
+  policyMode: ExperimentPolicyMode
 }
+
+export type QTableStatus = 'intact' | 'padded' | 'reset'
 
 export interface ExperimentRecord {
   schemaVersion: number
+  actionSchemaVersion: number
+  observationSchemaVersion: number
   id: string
   name: string
   createdAt: string
@@ -44,6 +63,9 @@ export interface ExperimentRecord {
   learningHistory: LearningHistoryState
   generationHistory: GenerationRecord[]
   statistics: ExperimentStatistics
+  qTableStatus: QTableStatus
+  qTableResetReason: string | null
+  migrationWarnings: string[]
 }
 
 export interface ExperimentSummary {
@@ -56,6 +78,8 @@ export interface ExperimentSummary {
   statistics: ExperimentStatistics
   worldConfig: WorldConfig
   learningConfig: LearningConfig
+  learningEnabled: boolean
+  policyMode: ExperimentPolicyMode
 }
 
 export interface ExperimentComparisonRow {

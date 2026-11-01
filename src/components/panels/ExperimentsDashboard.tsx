@@ -1,5 +1,13 @@
 import { useMemo, useState } from 'react'
 import { buildComparisonRows, formatComparisonValue } from '../../experiments/comparison'
+import {
+  classifyConditionMatch,
+  conditionDifferences,
+  conditionFromSummary,
+  describePolicyMode,
+  meanAndDeviation,
+  sameEnvironmentExceptSeed,
+} from '../../experiments/conditions'
 import { RESOURCE_DISTRIBUTION_LABELS } from '../../experiments/constants'
 import { useExperimentLibrary } from '../../hooks/useExperimentLibrary'
 import { SIMULATION_STEP_DT } from '../../simulation/constants'
@@ -15,6 +23,7 @@ export function ExperimentsDashboard() {
   const generation = useSimulationStore((state) => state.world.generation)
   const tick = useSimulationStore((state) => state.tick)
   const worldConfig = useSimulationStore((state) => state.pendingWorldConfig ?? state.world.config)
+  const learningEnabled = useSimulationStore((state) => state.learningEnabled)
   const library = useExperimentLibrary()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [nameDraft, setNameDraft] = useState<string | null>(null)
@@ -25,6 +34,10 @@ export function ExperimentsDashboard() {
     [library.items, selectedIds],
   )
   const comparisonRows = selectedItems.length >= 2 ? buildComparisonRows(selectedItems) : []
+  const selectedConditions = selectedItems.map(conditionFromSummary)
+  const conditionMatch = selectedConditions.length >= 2 ? classifyConditionMatch(selectedConditions) : null
+  const conditionDiffs = conditionDifferences(selectedConditions)
+  const repeatStats = selectedItems.length >= 2 && sameEnvironmentExceptSeed(selectedConditions)
 
   return (
     <div className="space-y-6">
@@ -86,7 +99,13 @@ export function ExperimentsDashboard() {
         <p className="mt-2 text-[12px] leading-5 text-lab-muted">
           Food {worldConfig.initialFoodCount} · Regen {worldConfig.foodRegenRate.toFixed(1)}/s ·
           Obstacles {Math.round(worldConfig.obstacleDensity * 100)}% ·{' '}
-          {RESOURCE_DISTRIBUTION_LABELS[worldConfig.resourceDistribution]}
+          {RESOURCE_DISTRIBUTION_LABELS[worldConfig.resourceDistribution]} · Seed {worldConfig.seed} ·{' '}
+          {worldConfig.terrainPreset} · Learning {learningEnabled ? 'On' : 'Off'}
+        </p>
+        <p className="mt-1 text-[12px] leading-5 text-lab-muted">
+          같은 Seed와 환경으로 다시 만들려면 New Experiment를 쓴다. 학습을 끄면 초기 epsilon이 유지되어
+          무작위 정책과 같고, 학습 후 끄면 현재 Q-Table을 고정해서 비교할 수 있다. 한 번의 결과는
+          일반적인 학습 성공이 아니다.
         </p>
         {library.message ? <p className="mt-2 text-[12px] text-lab-accent">{library.message}</p> : null}
         {library.error ? (
@@ -137,7 +156,8 @@ export function ExperimentsDashboard() {
                     </p>
                     <p className="mt-1 font-mono text-[11px] text-lab-muted">
                       Gen {item.currentGeneration} · {formatSimulationTime(item.statistics.simulationTime)} ·
-                      Survival {(item.statistics.populationSurvival * 100).toFixed(0)}%
+                      Survival {(item.statistics.populationSurvival * 100).toFixed(0)}% · Seed{' '}
+                      {item.worldConfig.seed} · {describePolicyMode(item.policyMode)}
                     </p>
                     <p className="mt-1 text-[11px] text-lab-muted">
                       Updated {new Date(item.updatedAt).toLocaleString()}
@@ -164,8 +184,33 @@ export function ExperimentsDashboard() {
       <section>
         <h2 className="text-[11px] text-lab-muted">Experiment Comparison</h2>
         <p className="mt-1 text-[12px] leading-5 text-lab-muted">
-          저장된 실험 2–4개를 선택한다. 값은 저장 시점의 실측 통계다.
+          저장된 실험 2–4개를 선택한다. 값은 저장 시점의 실측 통계다. Seed나 설정이 다르면 동등한
+          실험으로 표시하지 않는다.
         </p>
+        {conditionMatch === 'matched' ? (
+          <p className="mt-2 text-[12px] text-lab-accent">Matched conditions: same seed, environment, and learning settings.</p>
+        ) : null}
+        {conditionMatch === 'same-environment-different-policy' ? (
+          <p className="mt-2 text-[12px] text-lab-warn">
+            Same world seed and environment, different learning policy. This is a controlled policy comparison,
+            not proof of general learning success.
+          </p>
+        ) : null}
+        {conditionMatch === 'different' ? (
+          <div className="mt-2 text-[12px] text-lab-danger">
+            <p>These runs are not equivalent. Settings or seeds differ:</p>
+            <ul className="mt-1 list-disc pl-4">
+              {conditionDiffs.map((diff) => (
+                <li key={diff.key}>
+                  {diff.label}: {diff.values.map(String).join(' · ')}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {repeatStats ? (
+          <RepeatSummary rows={comparisonRows} />
+        ) : null}
         {comparisonRows.length === 0 ? (
           <div className="mt-3">
             <EmptyState>비교하려면 저장된 실험을 두 개 이상 선택한다.</EmptyState>
@@ -200,6 +245,40 @@ export function ExperimentsDashboard() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function RepeatSummary({
+  rows,
+}: {
+  rows: ReturnType<typeof buildComparisonRows>
+}) {
+  const interesting = rows.filter((row) =>
+    ['populationSurvival', 'averageReward', 'averageLifespan', 'foodEaten', 'resourcesGathered', 'toolUsageSuccessRate', 'damageDealt', 'combatSurvivalRate', 'reproductionCount'].includes(row.key),
+  )
+  return (
+    <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3 text-[12px]">
+      <p className="text-[11px] tracking-wide text-lab-muted uppercase">Same settings · different seeds</p>
+      <p className="mt-1 leading-5 text-lab-muted">
+        환경은 같고 Seed만 다르다. 평균과 편차는 이 선택 집합의 실측값이며, 일반적 학습 성공을 의미하지
+        않는다.
+      </p>
+      <div className="mt-2 space-y-1 font-mono">
+        {interesting.map((row) => {
+          const stats = meanAndDeviation(row.values)
+          return (
+            <div key={row.key} className="flex justify-between">
+              <span className="font-sans text-lab-muted">{row.label}</span>
+              <span>
+                {stats
+                  ? `${formatComparisonValue(stats.mean, row.format)} ± ${formatComparisonValue(stats.deviation, row.format === 'percent' ? 'percent' : 'number')}`
+                  : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

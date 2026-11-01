@@ -52,6 +52,9 @@ export function EcosystemStats() {
           <StatCard label="나무" value={stats.treeCount} tone="green" />
           <StatCard label="바위" value={stats.rockCount} tone="stone" />
           <StatCard label="먹이" value={stats.foodCount} tone="amber" />
+          <StatCard label="베리 덤불" value={stats.berryCount} tone="green" />
+          <StatCard label="뿌리 자원" value={stats.rootCount} tone="stone" />
+          <StatCard label="월드 도구" value={stats.toolCount} tone="amber" />
         </div>
       </section>
     </div>

@@ -15,6 +15,13 @@ export const DEFAULT_REWARD_CONFIG: RewardConfig = {
   collision: -2,
   death: -20,
   efficientRest: 0.4,
+  gatherUnit: 2.5,
+  pickupSuccess: 1,
+  attackHitUnit: 0.3,
+  attackMiss: -0.4,
+  damageTakenUnit: -0.3,
+  defendReduceUnit: 0.2,
+  fleeSuccess: 0.7,
 }
 
 export const LEARNING_CONFIG_RANGES = {
@@ -31,6 +38,13 @@ export const REWARD_CONFIG_RANGES = {
   collision: { min: -20, max: 0 },
   death: { min: -50, max: 0 },
   efficientRest: { min: 0, max: 5 },
+  gatherUnit: { min: 0, max: 10 },
+  pickupSuccess: { min: 0, max: 10 },
+  attackHitUnit: { min: 0, max: 2 },
+  attackMiss: { min: -5, max: 0 },
+  damageTakenUnit: { min: -2, max: 0 },
+  defendReduceUnit: { min: 0, max: 2 },
+  fleeSuccess: { min: 0, max: 5 },
 } as const
 
 export const EPSILON_DECAY_OPTIONS = [0.995, 0.999, 0.9995] as const
@@ -91,11 +105,46 @@ export function clampRewardConfig(config: RewardConfig): RewardConfig {
       REWARD_CONFIG_RANGES.efficientRest.min,
       REWARD_CONFIG_RANGES.efficientRest.max,
     ),
+    gatherUnit: clamp(
+      Number.isFinite(config.gatherUnit) ? config.gatherUnit : DEFAULT_REWARD_CONFIG.gatherUnit,
+      REWARD_CONFIG_RANGES.gatherUnit.min,
+      REWARD_CONFIG_RANGES.gatherUnit.max,
+    ),
+    pickupSuccess: clamp(
+      Number.isFinite(config.pickupSuccess) ? config.pickupSuccess : DEFAULT_REWARD_CONFIG.pickupSuccess,
+      REWARD_CONFIG_RANGES.pickupSuccess.min,
+      REWARD_CONFIG_RANGES.pickupSuccess.max,
+    ),
+    attackHitUnit: clamp(
+      Number.isFinite(config.attackHitUnit) ? config.attackHitUnit : DEFAULT_REWARD_CONFIG.attackHitUnit,
+      REWARD_CONFIG_RANGES.attackHitUnit.min,
+      REWARD_CONFIG_RANGES.attackHitUnit.max,
+    ),
+    attackMiss: clamp(
+      Number.isFinite(config.attackMiss) ? config.attackMiss : DEFAULT_REWARD_CONFIG.attackMiss,
+      REWARD_CONFIG_RANGES.attackMiss.min,
+      REWARD_CONFIG_RANGES.attackMiss.max,
+    ),
+    damageTakenUnit: clamp(
+      Number.isFinite(config.damageTakenUnit) ? config.damageTakenUnit : DEFAULT_REWARD_CONFIG.damageTakenUnit,
+      REWARD_CONFIG_RANGES.damageTakenUnit.min,
+      REWARD_CONFIG_RANGES.damageTakenUnit.max,
+    ),
+    defendReduceUnit: clamp(
+      Number.isFinite(config.defendReduceUnit) ? config.defendReduceUnit : DEFAULT_REWARD_CONFIG.defendReduceUnit,
+      REWARD_CONFIG_RANGES.defendReduceUnit.min,
+      REWARD_CONFIG_RANGES.defendReduceUnit.max,
+    ),
+    fleeSuccess: clamp(
+      Number.isFinite(config.fleeSuccess) ? config.fleeSuccess : DEFAULT_REWARD_CONFIG.fleeSuccess,
+      REWARD_CONFIG_RANGES.fleeSuccess.min,
+      REWARD_CONFIG_RANGES.fleeSuccess.max,
+    ),
   }
 }
 
-// MOVE, TURN_LEFT, TURN_RIGHT, EAT, REST
-export const EXPLORE_ACTION_WEIGHTS = [0.48, 0.16, 0.16, 0.1, 0.1] as const
+// MOVE, TURN_LEFT, TURN_RIGHT, EAT, REST, PICK_UP, GATHER, ATTACK, DEFEND, FLEE
+export const EXPLORE_ACTION_WEIGHTS = [0.4, 0.12, 0.12, 0.08, 0.08, 0.1, 0.1, 0.08, 0.05, 0.05] as const
 
 export const STAT_BAND_LOW_MAX = 33
 export const STAT_BAND_MID_MAX = 66
@@ -111,6 +160,11 @@ export const ACTION_LABELS = {
   TURN_RIGHT: 'Turn R',
   EAT: 'Eat',
   REST: 'Rest',
+  PICK_UP: 'Pick up',
+  GATHER: 'Gather',
+  ATTACK: 'Attack',
+  DEFEND: 'Defend',
+  FLEE: 'Flee',
 } as const
 
 export const ACTION_MARKS = {
@@ -119,6 +173,11 @@ export const ACTION_MARKS = {
   TURN_RIGHT: 'R',
   EAT: 'E',
   REST: 'S',
+  PICK_UP: 'P',
+  GATHER: 'G',
+  ATTACK: 'A',
+  DEFEND: 'D',
+  FLEE: 'X',
 } as const
 
 export const ACTION_COLORS = {
@@ -127,6 +186,38 @@ export const ACTION_COLORS = {
   TURN_RIGHT: '#3d9b7a',
   EAT: '#c9a227',
   REST: '#8b97a8',
+  PICK_UP: '#c47a3d',
+  GATHER: '#6aa84e',
+  ATTACK: '#c45c4a',
+  DEFEND: '#5aa0d6',
+  FLEE: '#c9a227',
 } as const
 
-export const STATE_SPACE_SIZE = 3 * 3 * 5 * 4 * 2
+export const DECISION_TYPE_LABELS = {
+  exploration: 'Explore',
+  exploitation: 'Exploit',
+} as const
+
+export const ACTION_OUTCOME_LABELS = {
+  success: 'Success',
+  failed: 'Failed',
+  blocked: 'Blocked',
+  'no-target': 'No target',
+  died: 'Died',
+} as const
+
+export const OBSERVATION_TERRAIN_COUNT = 5
+export const FORAGE_CUE_COUNT = 7
+export const NEARBY_TOOL_COUNT = 5
+export const HELD_TOOL_COUNT = 9
+export const AGENT_DIRECTION_COUNT = 5
+export const AGENT_DISTANCE_COUNT = 4
+export const HEALTH_BAND_COUNT = 3
+export const STATE_SPACE_SIZE =
+  3 * 3 * 5 * 4 * 2 * OBSERVATION_TERRAIN_COUNT * OBSERVATION_TERRAIN_COUNT *
+  FORAGE_CUE_COUNT *
+  NEARBY_TOOL_COUNT *
+  HELD_TOOL_COUNT *
+  AGENT_DIRECTION_COUNT *
+  AGENT_DISTANCE_COUNT *
+  HEALTH_BAND_COUNT

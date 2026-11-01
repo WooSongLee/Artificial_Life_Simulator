@@ -60,6 +60,8 @@ export function toExperimentSummary(record: ExperimentRecord): ExperimentSummary
     statistics: record.statistics,
     worldConfig: record.worldConfig,
     learningConfig: record.learningConfig,
+    learningEnabled: record.learningEnabled,
+    policyMode: record.statistics.policyMode,
   }
 }
 
@@ -69,8 +71,9 @@ export async function listExperiments(): Promise<ExperimentSummary[]> {
   )
 
   return records
-    .filter((record) => validateExperimentRecord(record).ok)
-    .map(toExperimentSummary)
+    .map((record) => validateExperimentRecord(record))
+    .filter((result): result is { ok: true; value: ExperimentRecord; issues: [] } => Boolean(result.ok && result.value))
+    .map((result) => toExperimentSummary(result.value))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 

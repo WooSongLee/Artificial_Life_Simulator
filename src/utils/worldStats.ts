@@ -19,6 +19,14 @@ export function countObjects(objects: WorldObject[]) {
   return { treeCount, rockCount, foodCount, totalObjects: objects.length }
 }
 
+export function countForage(state: SimulationState['world']) {
+  return {
+    berryCount: state.forageNodes.filter((node) => node.kind === 'berry_bush').length,
+    rootCount: state.forageNodes.filter((node) => node.kind === 'root_patch').length,
+    toolCount: state.worldTools.length,
+  }
+}
+
 export function getWorldStats(state: SimulationState): WorldStats {
   return {
     tick: state.tick,
@@ -26,6 +34,7 @@ export function getWorldStats(state: SimulationState): WorldStats {
     status: state.status,
     simulationTime: state.tick * SIMULATION_STEP_DT,
     ...countObjects(state.world.objects),
+    ...countForage(state.world),
     ...summarizeAgents(state.world.agents),
     generation: state.world.generation,
     generationElapsed: generationElapsed(state.world.generationStartTick, state.tick),

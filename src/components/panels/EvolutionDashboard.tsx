@@ -14,6 +14,7 @@ export function EvolutionDashboard() {
     currentAverages,
     currentReward,
     inheritQTable,
+    geneticsEnabled,
     mutationRate,
     populationLimit,
   } = useGenerationHistory()
@@ -51,6 +52,7 @@ export function EvolutionDashboard() {
         <h2 className="text-[11px] text-lab-muted">Current Genome Averages</h2>
         <p className="mt-1 text-[12px] leading-5 text-lab-muted">
           현재 월드에 있는 개체의 평균이다. 다음 세대가 태어나기 전에는 이력에 넣지 않는다.
+          Strength나 Aggression이 높다고 생존에 유리하다고 해석하지 않는다.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
           <StatCard label="Speed" value={currentAverages.speed.toFixed(2)} />
@@ -64,6 +66,10 @@ export function EvolutionDashboard() {
           />
           <StatCard label="Libido" value={currentAverages.libido.toFixed(2)} />
           <StatCard label="Lifespan" value={`${currentAverages.lifespan.toFixed(0)}s`} />
+          <StatCard label="Strength" value={currentAverages.strength.toFixed(2)} />
+          <StatCard label="Aggression" value={currentAverages.aggression.toFixed(2)} />
+          <StatCard label="Caution" value={currentAverages.caution.toFixed(2)} />
+          <StatCard label="Tool Affinity" value={currentAverages.toolAffinity.toFixed(2)} />
           <StatCard label="Mutation Rate" value={`${(mutationRate * 100).toFixed(0)}%`} />
         </div>
       </section>
@@ -121,6 +127,34 @@ export function EvolutionDashboard() {
             emptyLabel="완료된 세대가 없어 개체 수 데이터가 없다."
             yFormat={(value) => value.toFixed(0)}
           />
+          <ChartBlock
+            title="Average Strength"
+            points={recordedPoints(history, 'averageStrength')}
+            color="#c45c4a"
+            emptyLabel="Strength 평균이 기록된 완료 세대가 없다."
+            yFormat={(value) => value.toFixed(2)}
+          />
+          <ChartBlock
+            title="Average Aggression"
+            points={recordedPoints(history, 'averageAggression')}
+            color="#c47a3d"
+            emptyLabel="Aggression 평균이 기록된 완료 세대가 없다."
+            yFormat={(value) => value.toFixed(2)}
+          />
+          <ChartBlock
+            title="Average Caution"
+            points={recordedPoints(history, 'averageCaution')}
+            color="#5aa0d6"
+            emptyLabel="Caution 평균이 기록된 완료 세대가 없다."
+            yFormat={(value) => value.toFixed(2)}
+          />
+          <ChartBlock
+            title="Average Tool Affinity"
+            points={recordedPoints(history, 'averageToolAffinity')}
+            color="#6aa84e"
+            emptyLabel="Tool Affinity 평균이 기록된 완료 세대가 없다."
+            yFormat={(value) => value.toFixed(2)}
+          />
         </div>
       </section>
 
@@ -149,12 +183,13 @@ export function EvolutionDashboard() {
       <section>
         <h2 className="text-[11px] text-lab-muted">Evolution Settings</h2>
         <div className="mt-3 space-y-2 border border-lab-border bg-lab-elevated px-3 py-3 text-[13px]">
+          <InfoRow label="Genetics" value={geneticsEnabled ? 'On' : 'Off'} />
           <InfoRow label="Population Limit" value={populationLimit.toString()} />
           <InfoRow label="Mutation Rate" value={`${(mutationRate * 100).toFixed(0)}% / gene`} />
           <InfoRow label="Q-Table Inheritance" value={inheritQTable ? 'On' : 'Off'} />
           <p className="pt-1 text-[12px] leading-5 text-lab-muted">
-            자식은 기본적으로 빈 Q-Table로 학습을 시작한다. 상속을 켜면 더 적합한 부모의 Q-Table
-            복사본을 받는다. 유전 값과 학습된 지식은 같은 개념이 아니다.
+            유전이 꺼져 있으면 교배와 노화 사망이 없고 학습만 남는다. 자식은 기본적으로 빈 Q-Table로
+            학습을 시작한다. 유전 값과 학습된 지식은 같은 개념이 아니다.
           </p>
         </div>
       </section>
@@ -210,6 +245,10 @@ function GenerationDelta({ record }: { record: GenerationRecord }) {
         label="Mutations"
         value={`${record.mutation.mutatedAgentCount} agents / ${record.mutation.mutatedGeneCount} genes`}
       />
+      <InfoRow label="Avg Strength" value={formatOptionalAverage(record.averageStrength)} />
+      <InfoRow label="Avg Aggression" value={formatOptionalAverage(record.averageAggression)} />
+      <InfoRow label="Avg Caution" value={formatOptionalAverage(record.averageCaution)} />
+      <InfoRow label="Avg Tool Affinity" value={formatOptionalAverage(record.averageToolAffinity)} />
     </div>
   )
 }
@@ -220,29 +259,37 @@ function HistoryTable({ history }: { history: GenerationRecord[] }) {
 
   return (
     <div className="overflow-x-auto border border-lab-border bg-lab-elevated text-[12px]">
-      <div className="grid min-w-[720px] grid-cols-[0.6fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr] gap-1 border-b border-lab-border px-3 py-2 text-[11px] text-lab-muted">
+      <div className="grid min-w-[960px] grid-cols-[0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr] gap-1 border-b border-lab-border px-3 py-2 text-[11px] text-lab-muted">
         <span>Gen</span>
         <span className="text-right">Survive</span>
         <span className="text-right">Lifespan</span>
         <span className="text-right">Speed</span>
-        <span className="text-right">Vision</span>
+        <span className="text-right">Str</span>
+        <span className="text-right">Agg</span>
+        <span className="text-right">Cau</span>
+        <span className="text-right">Tool</span>
         <span className="text-right">Eff.</span>
         <span className="text-right">Reward</span>
+        <span className="text-right">Vision</span>
       </div>
       {history.map((record) => (
         <div
           key={record.generation}
-          className="grid min-w-[720px] grid-cols-[0.6fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr] gap-1 border-t border-lab-border px-3 py-2 font-mono"
+          className="grid min-w-[960px] grid-cols-[0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr_0.7fr] gap-1 border-t border-lab-border px-3 py-2 font-mono"
         >
           <span className="text-lab-text">{record.generation}</span>
           <span className="text-right text-lab-text">{(record.survivalRate * 100).toFixed(0)}%</span>
           <span className="text-right text-lab-text">{record.averageLifespan.toFixed(1)}s</span>
           <span className="text-right text-lab-text">{record.averageSpeed.toFixed(2)}</span>
-          <span className="text-right text-lab-text">{record.averageVision.toFixed(1)}</span>
+          <span className="text-right text-lab-text">{formatOptionalAverage(record.averageStrength)}</span>
+          <span className="text-right text-lab-text">{formatOptionalAverage(record.averageAggression)}</span>
+          <span className="text-right text-lab-text">{formatOptionalAverage(record.averageCaution)}</span>
+          <span className="text-right text-lab-text">{formatOptionalAverage(record.averageToolAffinity)}</span>
           <span className="text-right text-lab-text">{record.averageEnergyEfficiency.toFixed(2)}</span>
           <span className="text-right text-lab-text">
             {record.hasLearningSamples ? record.averageReward.toFixed(2) : '—'}
           </span>
+          <span className="text-right text-lab-text">{record.averageVision.toFixed(1)}</span>
         </div>
       ))}
       {previous && latest ? (
@@ -256,6 +303,22 @@ function HistoryTable({ history }: { history: GenerationRecord[] }) {
       ) : null}
     </div>
   )
+}
+
+function recordedPoints(
+  history: GenerationRecord[],
+  key: 'averageStrength' | 'averageAggression' | 'averageCaution' | 'averageToolAffinity',
+): { x: number; y: number }[] {
+  return history.flatMap((record) => {
+    const value = record[key]
+    return typeof value === 'number' && Number.isFinite(value)
+      ? [{ x: record.generation, y: value }]
+      : []
+  })
+}
+
+function formatOptionalAverage(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '—'
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

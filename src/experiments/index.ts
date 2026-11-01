@@ -1,5 +1,13 @@
 export { buildComparisonRows, formatComparisonValue, toComparable } from './comparison'
 export {
+  classifyConditionMatch,
+  conditionDifferences,
+  conditionFromSummary,
+  describePolicyMode,
+  meanAndDeviation,
+  sameEnvironmentExceptSeed,
+} from './conditions'
+export {
   EXPERIMENT_SCHEMA_VERSION,
   MAX_EXPERIMENT_NAME_LENGTH,
   RESOURCE_DISTRIBUTION_LABELS,
@@ -29,11 +37,13 @@ export {
   saveSession,
   toExperimentSummary,
 } from './storage'
+export { formatMigrationNotice, migrateExperimentRecord } from './migrate'
 export { formatValidationIssues, validateExperimentRecord, validateLearningConfig, validateRewardConfig, validateWorldConfig } from './validation'
 
 export type {
   ExperimentComparisonRow,
   ExperimentIdentity,
+  ExperimentPolicyMode,
   ExperimentRecord,
   ExperimentStatistics,
   ExperimentSummary,

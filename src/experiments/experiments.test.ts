@@ -2,11 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_EVOLUTION_CONFIG } from '../evolution/constants'
 import { applyExperimentBrains, captureExperimentRecord, createExperimentIdentity } from './snapshot'
 import { experimentToJson, prepareImportedExperiment } from './serialization'
+import {
+  classifyConditionMatch,
+  conditionFromRecord,
+  meanAndDeviation,
+  sameEnvironmentExceptSeed,
+} from './conditions'
+import { migrateExperimentRecord } from './migrate'
 import { parseExperimentJson, validateExperimentRecord, validateLearningConfig } from './validation'
+import { ACTION_SCHEMA_VERSION, OBSERVATION_SCHEMA_VERSION } from '../learning/schema'
 import { DEFAULT_LEARNING_CONFIG, DEFAULT_REWARD_CONFIG } from '../learning/constants'
 import { resetBrains } from '../learning/brain'
 import { DEFAULT_WORLD_CONFIG } from '../simulation/constants'
 import { createLearningHistory } from '../simulation/metrics'
+import { terrainMatchesGeneration } from '../simulation/terrain'
 import { createInitialWorld } from '../simulation/worldFactory'
 import { useSimulationStore } from '../store/useSimulationStore'
 
@@ -42,12 +51,279 @@ describe('experiment save/load', () => {
     expect(parsed.ok).toBe(true)
     expect(parsed.value?.world.agents).toHaveLength(3)
     expect(parsed.value?.brains).toHaveLength(3)
-    expect(parsed.value?.schemaVersion).toBe(1)
+    expect(parsed.value?.schemaVersion).toBe(4)
+    expect(parsed.value?.world.forageNodes.length).toBeGreaterThan(0)
+    expect(parsed.value?.world.worldTools.length).toBeGreaterThan(0)
+    expect(parsed.value?.world.agents.every((agent) => agent.equipment === null || agent.equipment.durability > 0)).toBe(true)
+    expect(parsed.value?.world.terrain.cells.length).toBeGreaterThan(0)
+    expect(parsed.value?.worldConfig.seed).toBeDefined()
+    expect(parsed.value?.qTableStatus).toBe('intact')
 
     applyExperimentBrains(parsed.value!)
     const imported = prepareImportedExperiment(parsed.value!)
     expect(imported.id).not.toBe(record.id)
     expect(imported.name.includes('imported')).toBe(true)
+  })
+
+  it('migrates schemaVersion 1 records, keeps the world, and resets incompatible Q-tables', () => {
+    const record = snapshotWorld()
+    const firstAgent = record.world.agents[0]
+    if (!firstAgent) throw new Error('expected an agent')
+    const legacyBrains = record.brains.map((brain, index) => {
+      const { actionSchemaVersion: _action, observationSchemaVersion: _observation, ...rest } = brain
+      return index === 0
+        ? { ...rest, qTable: [['low|mid|forward|close|no', [1, 0, 0, 0, 0]]] }
+        : rest
+    })
+    const {
+      actionSchemaVersion: _action,
+      observationSchemaVersion: _observation,
+      qTableStatus: _status,
+      qTableResetReason: _reason,
+      migrationWarnings: _warnings,
+      ...legacyRecord
+    } = record
+    const { terrain: _terrain, ...legacyWorld } = record.world
+    const { seed: _seed, terrainPreset: _preset, ...legacyWorldConfig } = record.worldConfig
+
+    const legacy = {
+      ...legacyRecord,
+      schemaVersion: 1,
+      worldConfig: legacyWorldConfig,
+      world: {
+        ...legacyWorld,
+        config: legacyWorldConfig,
+      },
+      brains: legacyBrains,
+    }
+
+    const migrated = migrateExperimentRecord(legacy) as typeof record
+    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
+    expect(migrated.actionSchemaVersion).toBe(ACTION_SCHEMA_VERSION)
+    expect(migrated.world.terrain.cells.length).toBeGreaterThan(0)
+    expect(migrated.world.forageNodes.length).toBeGreaterThan(0)
+    expect(migrated.world.worldTools.length).toBeGreaterThan(0)
+    expect(migrated.world.agents[0]?.id).toBe(firstAgent.id)
+    expect(migrated.world.agents[0]?.genome).toEqual(firstAgent.genome)
+    expect(migrated.world.agents[0]?.equipment).toBeNull()
+    expect(migrated.brains[0]?.qTable).toEqual([])
+    expect(migrated.qTableStatus).toBe('reset')
+    expect(migrated.qTableResetReason).toContain('Observation schema')
+
+    const validated = validateExperimentRecord(legacy)
+    expect(validated.ok).toBe(true)
+    expect(validated.value?.world.agents[0]?.genome).toEqual(firstAgent.genome)
+    expect(validated.value?.brains[0]?.qTable).toEqual([])
+    expect(validated.value?.schemaVersion).toBe(4)
+  })
+
+  it('migrates schemaVersion 2 records by seeding forage/tools and resetting Q-tables', () => {
+    const record = snapshotWorld()
+    const v2 = {
+      ...record,
+      schemaVersion: 2,
+      actionSchemaVersion: 1,
+      observationSchemaVersion: 2,
+      world: {
+        ...record.world,
+        forageNodes: undefined,
+        worldTools: undefined,
+        forageSpawnCooldown: undefined,
+      },
+      worldConfig: {
+        ...record.worldConfig,
+        initialBerryCount: undefined,
+        initialRootCount: undefined,
+        forageRegenRate: undefined,
+        initialBasketCount: undefined,
+        initialStickCount: undefined,
+      },
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        qTable: [['low|mid|forward|close|no|grassland|grassland', [1, 0, 0, 0, 0]]],
+      })),
+    }
+
+    const migrated = migrateExperimentRecord(v2) as typeof record
+    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.world.forageNodes.length).toBeGreaterThan(0)
+    expect(migrated.world.worldTools.length).toBeGreaterThan(0)
+    expect(migrated.brains[0]?.qTable).toEqual([])
+    expect(migrated.qTableStatus).toBe('reset')
+    expect(migrated.rewardConfig.gatherUnit).toBeDefined()
+    expect(validateExperimentRecord(v2).ok).toBe(true)
+  })
+
+  it('migrates schemaVersion 3 records by resetting Q-tables for observation v4', () => {
+    const record = snapshotWorld()
+    const v3 = {
+      ...record,
+      schemaVersion: 3,
+      actionSchemaVersion: 2,
+      observationSchemaVersion: 3,
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        actionSchemaVersion: 2,
+        observationSchemaVersion: 3,
+        qTable: [['low|mid|forward|close|no|grassland|grassland|none|none|none', [1, 0, 0, 0, 0, 0, 0]]],
+      })),
+    }
+
+    const migrated = migrateExperimentRecord(v3) as typeof record
+    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
+    expect(migrated.actionSchemaVersion).toBe(ACTION_SCHEMA_VERSION)
+    expect(migrated.brains[0]?.qTable).toEqual([])
+    expect(migrated.qTableStatus).toBe('reset')
+    expect(migrated.qTableResetReason).toContain('v3 → v4')
+    expect(validateExperimentRecord(v3).ok).toBe(true)
+  })
+
+  it('fills missing personality genes and leaves old generation averages unrecorded', () => {
+    const record = snapshotWorld()
+    const first = record.world.agents[0]
+    if (!first) throw new Error('expected an agent')
+    const {
+      strength: _strength,
+      aggression: _aggression,
+      caution: _caution,
+      toolAffinity: _toolAffinity,
+      ...legacyGenome
+    } = first.genome
+    const legacy = {
+      ...record,
+      world: {
+        ...record.world,
+        agents: record.world.agents.map((agent) => ({
+          ...agent,
+          genome: legacyGenome,
+          parentGenomes: undefined,
+        })),
+      },
+      statistics: {
+        ...record.statistics,
+        averageGenome: legacyGenome,
+      },
+      generationHistory: [
+        {
+          generation: 1,
+          populationSize: 3,
+          aliveCount: 3,
+          survivalRate: 1,
+          averageLifespan: 12,
+          averageReward: 0.2,
+          averageSpeed: 2,
+          averageVision: 8,
+          averageEnergyEfficiency: 1,
+          averageLearningRate: 0.1,
+          averageExplorationRate: 0.8,
+          hasLearningSamples: true,
+          mutation: { mutatedAgentCount: 0, mutatedGeneCount: 0, mutationRate: 0.15 },
+          endedAtTick: 10,
+          endedAtTime: 0.5,
+          duration: 0.5,
+          endReason: 'birth',
+        },
+      ],
+    }
+
+    const migrated = migrateExperimentRecord(legacy) as typeof record
+    expect(migrated.world.agents[0]?.genome.strength).toBe(1)
+    expect(migrated.world.agents[0]?.genome.aggression).toBe(1)
+    expect(migrated.world.agents[0]?.genome.caution).toBe(1)
+    expect(migrated.world.agents[0]?.genome.toolAffinity).toBe(1)
+    expect(migrated.world.agents[0]?.genome.speed).toBe(first.genome.speed)
+    expect(migrated.statistics.averageGenome.strength).toBe(1)
+    expect(migrated.generationHistory[0]?.averageStrength).toBeNull()
+    expect(migrated.generationHistory[0]?.averageAggression).toBeNull()
+    expect(migrated.generationHistory[0]?.averageCaution).toBeNull()
+    expect(migrated.generationHistory[0]?.averageToolAffinity).toBeNull()
+    expect(validateExperimentRecord(legacy).ok).toBe(true)
+  })
+
+  it('preserves personality genes through JSON export and import', () => {
+    const record = snapshotWorld()
+    const first = record.world.agents[0]
+    if (!first) throw new Error('expected an agent')
+    first.genome.strength = 1.25
+    first.genome.aggression = 1.4
+    first.genome.caution = 0.55
+    first.genome.toolAffinity = 1.1
+    const parsed = parseExperimentJson(experimentToJson(record))
+    expect(parsed.ok).toBe(true)
+    expect(parsed.value?.world.agents[0]?.genome.strength).toBeCloseTo(1.25)
+    expect(parsed.value?.world.agents[0]?.genome.aggression).toBeCloseTo(1.4)
+    expect(parsed.value?.world.agents[0]?.genome.caution).toBeCloseTo(0.55)
+    expect(parsed.value?.world.agents[0]?.genome.toolAffinity).toBeCloseTo(1.1)
+  })
+
+  it('pads Q-tables when only newer actions were appended', () => {
+    const record = snapshotWorld()
+    const currentKey =
+      'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high'
+    const compatible = {
+      ...record,
+      actionSchemaVersion: 2,
+      observationSchemaVersion: 4,
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        actionSchemaVersion: 2,
+        observationSchemaVersion: 4,
+        qTable: [[currentKey, [1, 0, 0, 0, 0, 2, 0]]],
+      })),
+    }
+
+    const migrated = migrateExperimentRecord(compatible) as typeof record
+    expect(migrated.qTableStatus).toBe('padded')
+    expect(migrated.brains[0]?.qTable[0]?.[1]).toEqual([1, 0, 0, 0, 0, 2, 0, 0, 0, 0])
+    expect(migrated.qTableResetReason).toContain('padded')
+    expect(validateExperimentRecord(compatible).ok).toBe(true)
+  })
+
+  it('does not treat different seeds as equivalent experiments', () => {
+    const first = snapshotWorld()
+    const second = {
+      ...first,
+      id: 'other',
+      name: 'Other',
+      worldConfig: { ...first.worldConfig, seed: first.worldConfig.seed + 1 },
+      learningEnabled: false,
+    }
+    expect(classifyConditionMatch([conditionFromRecord(first), conditionFromRecord(second)])).toBe('different')
+
+    const sameWorld = {
+      ...first,
+      id: 'policy',
+      name: 'Policy',
+      learningEnabled: false,
+    }
+    expect(classifyConditionMatch([conditionFromRecord(first), conditionFromRecord(sameWorld)])).toBe(
+      'same-environment-different-policy',
+    )
+    expect(sameEnvironmentExceptSeed([conditionFromRecord(first), conditionFromRecord(sameWorld)])).toBe(false)
+    expect(sameEnvironmentExceptSeed([conditionFromRecord(first), conditionFromRecord(second)])).toBe(false)
+
+    const sameSettingsDifferentSeed = {
+      ...first,
+      id: 'repeat',
+      name: 'Repeat',
+      worldConfig: { ...first.worldConfig, seed: first.worldConfig.seed + 2 },
+    }
+    expect(sameEnvironmentExceptSeed([conditionFromRecord(first), conditionFromRecord(sameSettingsDifferentSeed)])).toBe(
+      true,
+    )
+    expect(meanAndDeviation([1, 3, 5])?.mean).toBe(3)
+  })
+
+  it('fills missing geneticsEnabled as true so old experiments keep genetics', () => {
+    const record = snapshotWorld()
+    const { geneticsEnabled: _ignored, ...legacyEvolution } = record.evolutionConfig
+    const migrated = migrateExperimentRecord({
+      ...record,
+      evolutionConfig: legacyEvolution,
+    }) as typeof record
+    expect(migrated.evolutionConfig.geneticsEnabled).toBe(true)
   })
 
   it('rejects invalid learning rates, schema versions, and incomplete records', () => {
@@ -80,5 +356,6 @@ describe('experiment save/load', () => {
     expect(next.world.generation).toBe(1)
     expect(next.world.agents.every((agent) => agent.alive)).toBe(true)
     expect(next.world.agents.every((agent) => Number.isFinite(agent.energy))).toBe(true)
+    expect(terrainMatchesGeneration(next.world.terrain, next.world.config)).toBe(true)
   })
 })

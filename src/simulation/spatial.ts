@@ -1,13 +1,15 @@
 import { clamp, distanceSq } from '../utils/math'
 import type { Rng } from '../utils/random'
 import { randomInRange } from '../utils/random'
-import type { ResourceDistribution, WorldConfig, WorldObject } from '../types/world'
+import type { TerrainGrid } from '../types/terrain'
+import type { ResourceDistribution, WorldConfig, WorldObject, WorldState } from '../types/world'
 import {
   AGENT_RADIUS,
   ROCK_COLLISION_RADIUS,
   TREE_COLLISION_RADIUS,
   WORLD_EDGE_MARGIN,
 } from './constants'
+import { isTerrainWalkable } from './terrain'
 
 export interface ClusterCenter {
   x: number
@@ -33,7 +35,7 @@ export function collidesWithObstacles(
   x: number,
   z: number,
   radius: number,
-  objects: WorldObject[],
+  objects: readonly WorldObject[],
 ): boolean {
   for (const object of objects) {
     const objectRadius = obstacleRadius(object)
@@ -49,10 +51,28 @@ export function collidesWithObstacles(
 export function isBlockedSpawn(
   x: number,
   z: number,
-  objects: WorldObject[],
+  objects: readonly WorldObject[],
   extraRadius = AGENT_RADIUS,
+  terrain?: TerrainGrid,
+  worldSize?: number,
 ): boolean {
+  if (terrain && worldSize !== undefined && !isTerrainWalkable(terrain, x, z, worldSize)) {
+    return true
+  }
   return collidesWithObstacles(x, z, extraRadius + 0.9, objects)
+}
+
+export function isBlockedWorldPosition(
+  x: number,
+  z: number,
+  world: Pick<WorldState, 'objects' | 'terrain' | 'config'>,
+  radius = AGENT_RADIUS,
+): boolean {
+  return (
+    !isInsideWorld(x, z, world.config.size) ||
+    !isTerrainWalkable(world.terrain, x, z, world.config.size) ||
+    collidesWithObstacles(x, z, radius, world.objects)
+  )
 }
 
 export function findOpenPosition(
@@ -72,10 +92,16 @@ export function findOpenPosition(
     }
   }
 
-  return {
-    x: randomInRange(rng, -half, half),
-    z: randomInRange(rng, -half, half),
+  const fallbackStep = Math.max(1.2, config.size / 16)
+  for (let z = -half; z <= half; z += fallbackStep) {
+    for (let x = -half; x <= half; x += fallbackStep) {
+      if (!isBlocked(x, z)) {
+        return { x, z }
+      }
+    }
   }
+
+  return { x: 0, z: 0 }
 }
 
 export function createClusterCenters(

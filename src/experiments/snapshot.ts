@@ -1,10 +1,13 @@
-import { averageGenomes, averageLifetimeReward } from '../evolution/metrics'
+import { averageGenomes, averageLifetimeReward, genomeFromAverages } from '../evolution/metrics'
 import { createId } from '../utils/id'
-import type { Genome } from '../evolution/types'
-import { exportBrains, importBrains } from '../learning/brain'
+import { GENOME_GENES, type Genome } from '../evolution/types'
+import { exportBrains, getBrain, importBrains } from '../learning/brain'
+import { ACTION_SCHEMA_VERSION, OBSERVATION_SCHEMA_VERSION } from '../learning/schema'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
+import { createEmptyOutcomeStats, toolUsageAttempts, toolUsageSuccessRate, toolUsageSuccesses } from '../simulation/outcomes'
 import type { SimulationState } from '../types/simulation'
 import { summarizeAgents } from '../utils/agentStats'
+import { policyModeFor } from './conditions'
 import { EXPERIMENT_SCHEMA_VERSION } from './constants'
 import type { ExperimentIdentity, ExperimentRecord, ExperimentStatistics } from './types'
 
@@ -43,15 +46,11 @@ export function createExperimentIdentity(name?: string): ExperimentIdentity {
 }
 
 function emptyGenome(): Genome {
-  return {
-    speed: 0,
-    vision: 0,
-    energyEfficiency: 0,
-    learningRate: 0,
-    explorationRate: 0,
-    libido: 0,
-    lifespan: 0,
+  const genome = {} as Genome
+  for (const gene of GENOME_GENES) {
+    genome[gene] = 0
   }
+  return genome
 }
 
 export function collectExperimentStatistics(state: ExperimentRuntimeState['simulation']): ExperimentStatistics {
@@ -65,6 +64,13 @@ export function collectExperimentStatistics(state: ExperimentRuntimeState['simul
       : population.totalAgents === 0
         ? 0
         : population.aliveCount / population.totalAgents
+  const outcomes = state.world.outcomeStats ?? createEmptyOutcomeStats()
+  const combatDeaths = state.world.agents.filter((agent) => agent.deathCause === 'combat').length
+  const combatOccurred = combatDeaths > 0 || outcomes.damageDealt > 0 || outcomes.damageReceived > 0
+  const visitedStates = state.world.agents.reduce(
+    (sum, agent) => sum + (getBrain(agent.id)?.qTable.size ?? 0),
+    0,
+  )
 
   return {
     populationSurvival: survival,
@@ -77,22 +83,30 @@ export function collectExperimentStatistics(state: ExperimentRuntimeState['simul
           : null,
     generationCount: state.generationHistory.length,
     currentGeneration: state.world.generation,
-    averageGenome:
-      genome.sampleCount === 0
-        ? emptyGenome()
-        : {
-            speed: genome.speed,
-            vision: genome.vision,
-            energyEfficiency: genome.energyEfficiency,
-            learningRate: genome.learningRate,
-            explorationRate: genome.explorationRate,
-            libido: genome.libido,
-            lifespan: genome.lifespan,
-          },
+    averageGenome: genome.sampleCount === 0 ? emptyGenome() : genomeFromAverages(genome),
     aliveCount: population.aliveCount,
     totalAgents: population.totalAgents,
     simulationTime: state.tick * SIMULATION_STEP_DT,
     tick: state.tick,
+    foodEaten: outcomes.foodEaten,
+    resourcesGathered: outcomes.resourcesGathered,
+    toolUsageAttempts: toolUsageAttempts(outcomes),
+    toolUsageSuccesses: toolUsageSuccesses(outcomes),
+    toolUsageSuccessRate: toolUsageSuccessRate(outcomes),
+    damageDealt: outcomes.damageDealt,
+    damageReceived: outcomes.damageReceived,
+    combatDeaths,
+    combatSurvivalRate:
+      combatOccurred && population.totalAgents > 0
+        ? 1 - combatDeaths / population.totalAgents
+        : null,
+    reproductionCount: state.world.birthCount,
+    visitedStates,
+    learningEnabled: state.learningEnabled,
+    policyMode: policyModeFor({
+      learningEnabled: state.learningEnabled,
+      visitedStates,
+    }),
   }
 }
 
@@ -102,6 +116,8 @@ export function captureExperimentRecord(state: ExperimentRuntimeState): Experime
 
   return {
     schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+    actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
     id: state.identity.id,
     name: state.identity.name,
     createdAt: state.identity.createdAt,
@@ -119,6 +135,9 @@ export function captureExperimentRecord(state: ExperimentRuntimeState): Experime
     learningHistory: structuredClone(state.simulation.learningHistory),
     generationHistory: structuredClone(state.simulation.generationHistory),
     statistics: collectExperimentStatistics(state.simulation),
+    qTableStatus: 'intact',
+    qTableResetReason: null,
+    migrationWarnings: [],
   }
 }
 

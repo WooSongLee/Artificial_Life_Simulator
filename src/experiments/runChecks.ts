@@ -45,7 +45,7 @@ function validSnapshotRoundtrip(): void {
   assert(parsed.ok && parsed.value !== undefined, 'exported JSON must validate')
   assert(parsed.value?.world.agents.length === 3, 'agent count must survive export')
   assert(parsed.value?.brains.length === 3, 'brains must be stored with the experiment')
-  assert(parsed.value?.schemaVersion === 1, 'schema version must be stored')
+  assert(parsed.value?.schemaVersion === 4, 'schema version must be stored')
 
   applyExperimentBrains(parsed.value!)
   const imported = prepareImportedExperiment(parsed.value!)

@@ -12,6 +12,7 @@ export function SimulationControls() {
   const reset = useSimulationStore((state) => state.reset)
   const setSpeed = useSimulationStore((state) => state.setSpeed)
   const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const geneticsEnabled = useSimulationStore((state) => state.evolutionConfig.geneticsEnabled)
   const generation = useSimulationStore((state) => state.world.generation)
   const hydrated = useSimulationStore((state) => state.hydrated)
 
@@ -96,6 +97,14 @@ export function SimulationControls() {
           </span>
           <span className={learningEnabled ? 'text-lab-accent' : 'text-lab-danger'}>
             {learningEnabled ? 'ON' : 'OFF'}
+          </span>
+        </div>
+        <div>
+          <span className="mr-2 text-[11px] tracking-[0.14em] text-lab-muted">
+            GENE
+          </span>
+          <span className={geneticsEnabled ? 'text-lab-accent' : 'text-lab-muted'}>
+            {geneticsEnabled ? 'ON' : 'OFF'}
           </span>
         </div>
       </div>

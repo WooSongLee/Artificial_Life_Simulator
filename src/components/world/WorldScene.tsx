@@ -3,18 +3,21 @@ import { AgentTrail } from './AgentTrail'
 import { CameraRig } from './CameraRig'
 import { FoodSeekPath } from './FoodSeekPath'
 import { Terrain } from './Terrain'
+import { CombatCues } from './CombatCues'
+import { ForageAndTools } from './ForageAndTools'
 import { WorldObjects } from './WorldObjects'
 
 export function WorldScene() {
   return (
     <>
-      <color attach="background" args={['#1c2a1e']} />
+      <color attach="background" args={['#1a261c']} />
+      <fog attach="fog" args={['#1a261c', 58, 150]} />
 
-      <ambientLight intensity={0.7} />
-      <hemisphereLight args={['#d7e7ff', '#4a5a32', 0.55]} />
+      <ambientLight intensity={0.5} />
+      <hemisphereLight args={['#e7eef8', '#3d4a28', 0.64]} />
       <directionalLight
-        position={[18, 28, 12]}
-        intensity={1.35}
+        position={[20, 32, 14]}
+        intensity={1.72}
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-camera-near={1}
@@ -28,8 +31,10 @@ export function WorldScene() {
       <CameraRig />
       <Terrain />
       <WorldObjects />
+      <ForageAndTools />
       <AgentTrail />
       <FoodSeekPath />
+      <CombatCues />
       <Agents />
     </>
   )

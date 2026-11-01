@@ -18,6 +18,7 @@ import type { EvolutionConfig, Genome, GenomeGene } from './types'
 export interface OffspringBlueprint {
   genome: Genome
   parentIds: [string, string]
+  parentGenomes: [Genome, Genome]
   inheritParentId: string
   mutatedGenes: GenomeGene[]
 }
@@ -57,6 +58,7 @@ export function breedChild(
   return {
     genome: mutated.genome,
     parentIds: [parentA.id, parentB.id],
+    parentGenomes: [{ ...parentA.genome }, { ...parentB.genome }],
     inheritParentId: inheritParent.id,
     mutatedGenes: mutated.mutatedGenes,
   }

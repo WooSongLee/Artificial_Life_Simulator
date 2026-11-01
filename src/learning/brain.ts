@@ -1,11 +1,15 @@
 import type { Agent } from '../types/agent'
+import type { WorldState } from '../types/world'
+import { createEmptyActionCounts, qValuesByAction } from './actionEvents'
 import {
   DEFAULT_LEARNING_CONFIG,
   LEARNING_EXPLORE_WINDOW,
   LEARNING_REWARD_WINDOW,
   STATE_SPACE_SIZE,
 } from './constants'
-import { createEmptyQValues, meanQValue } from './qLearning'
+import { biasByAction, geneticActionBias, selectionScoresFrom } from './geneticBias'
+import { createEmptyQValues, meanQValue, peekQValues } from './qLearning'
+import { ACTION_SCHEMA_VERSION, OBSERVATION_SCHEMA_VERSION } from './schema'
 import { AGENT_ACTIONS } from './types'
 import type {
   AgentAction,
@@ -25,22 +29,14 @@ export interface SerializedBrain {
   recentRewards: number[]
   recentExplored: number[]
   actionCounts: Record<AgentAction, number>
+  actionSchemaVersion?: number
+  observationSchemaVersion?: number
 }
 
 const brains = new Map<string, AgentBrain>()
 
-function emptyActionCounts(): Record<AgentAction, number> {
-  return {
-    MOVE_FORWARD: 0,
-    TURN_LEFT: 0,
-    TURN_RIGHT: 0,
-    EAT: 0,
-    REST: 0,
-  }
-}
-
 function emptyActionFloats(): Record<AgentAction, number> {
-  return emptyActionCounts()
+  return createEmptyActionCounts()
 }
 
 export function emptyQTableSummary(): QTableSummary {
@@ -52,7 +48,7 @@ export function emptyQTableSummary(): QTableSummary {
     minQ: 0,
     maxQ: 0,
     averageQByAction: emptyActionFloats(),
-    preferredActionCounts: emptyActionCounts(),
+    preferredActionCounts: createEmptyActionCounts(),
   }
 }
 
@@ -62,7 +58,7 @@ export function summarizeQTable(table: Map<string, number[]>): QTableSummary {
   }
 
   const averageQByAction = emptyActionFloats()
-  const preferredActionCounts = emptyActionCounts()
+  const preferredActionCounts = createEmptyActionCounts()
   let qSum = 0
   let qCount = 0
   let minQ = Number.POSITIVE_INFINITY
@@ -121,7 +117,9 @@ export function createBrain(
     totalReward: 0,
     recentRewards: [],
     recentExplored: [],
-    actionCounts: emptyActionCounts(),
+    actionCounts: createEmptyActionCounts(),
+    actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
   }
 }
 
@@ -156,6 +154,8 @@ export function serializeBrain(agentId: string, brain: AgentBrain): SerializedBr
     recentRewards: brain.recentRewards.slice(),
     recentExplored: brain.recentExplored.slice(),
     actionCounts: { ...brain.actionCounts },
+    actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
   }
 }
 
@@ -176,7 +176,9 @@ export function deserializeBrain(record: SerializedBrain): AgentBrain {
     totalReward: Number.isFinite(record.totalReward) ? record.totalReward : 0,
     recentRewards: record.recentRewards.filter((value) => Number.isFinite(value)),
     recentExplored: record.recentExplored.filter((value) => Number.isFinite(value)),
-    actionCounts: { ...record.actionCounts },
+    actionCounts: { ...createEmptyActionCounts(), ...record.actionCounts },
+    actionSchemaVersion: record.actionSchemaVersion ?? ACTION_SCHEMA_VERSION,
+    observationSchemaVersion: record.observationSchemaVersion ?? OBSERVATION_SCHEMA_VERSION,
   }
 }
 
@@ -242,8 +244,12 @@ export function mean(values: readonly number[]): number {
   return sum / values.length
 }
 
-export function getAgentLearningView(agent: Agent): AgentLearningView {
+export function getAgentLearningView(agent: Agent, world?: WorldState): AgentLearningView {
   const brain = getBrain(agent.id)
+  const currentQ = brain && agent.lastStateKey
+    ? peekQValues(brain.qTable, agent.lastStateKey)
+    : null
+  const geneticBias = world ? geneticActionBias(agent, world) : createEmptyQValues()
 
   return {
     lastAction: agent.lastAction,
@@ -256,14 +262,19 @@ export function getAgentLearningView(agent: Agent): AgentLearningView {
     averageQValue: brain ? meanQValue(brain.qTable) : 0,
     explorationRate: brain ? mean(brain.recentExplored) : 0,
     visitedStates: brain?.qTable.size ?? 0,
-    actionCounts: brain ? { ...brain.actionCounts } : emptyActionCounts(),
+    actionCounts: brain ? { ...brain.actionCounts } : createEmptyActionCounts(),
     recentRewards: brain ? brain.recentRewards.slice() : [],
     qTable: brain ? summarizeQTable(brain.qTable) : emptyQTableSummary(),
+    currentQByAction: currentQ ? qValuesByAction(currentQ) : null,
+    currentGeneticBiasByAction: currentQ ? biasByAction(geneticBias) : null,
+    currentSelectionScoreByAction: currentQ
+      ? qValuesByAction(selectionScoresFrom(currentQ, geneticBias))
+      : null,
   }
 }
 
 export function summarizeLearning(agents: Agent[], learningEnabled: boolean): LearningStats {
-  const actionCounts = emptyActionCounts()
+  const actionCounts = createEmptyActionCounts()
 
   if (agents.length === 0) {
     return {
@@ -273,9 +284,14 @@ export function summarizeLearning(agents: Agent[], learningEnabled: boolean): Le
       averageQValue: 0,
       explorationRate: 0,
       visitedStates: 0,
+      maxVisitedStates: 0,
+      averageVisitedStates: 0,
+      qTableCells: 0,
+      stateSpaceSize: STATE_SPACE_SIZE,
       learningEnabled,
       hasLearningSamples: false,
       actionCounts,
+      agentActionCounts: [],
     }
   }
 
@@ -289,6 +305,9 @@ export function summarizeLearning(agents: Agent[], learningEnabled: boolean): Le
   let exploreSum = 0
   let exploreCount = 0
   let visitedStates = 0
+  let maxVisitedStates = 0
+  let qTableCells = 0
+  const agentActionCounts: LearningStats['agentActionCounts'] = []
   const epsilonAgents = agents.some((agent) => agent.alive)
     ? agents.filter((agent) => agent.alive)
     : agents
@@ -306,6 +325,15 @@ export function summarizeLearning(agents: Agent[], learningEnabled: boolean): Le
 
     totalLearningSteps += brain.totalSteps
     visitedStates += brain.qTable.size
+    maxVisitedStates = Math.max(maxVisitedStates, brain.qTable.size)
+    qTableCells += brain.qTable.size * AGENT_ACTIONS.length
+    agentActionCounts.push({
+      agentId: agent.id,
+      alive: agent.alive,
+      total: AGENT_ACTIONS.reduce((sum, action) => sum + brain.actionCounts[action], 0),
+      visitedStates: brain.qTable.size,
+      actionCounts: { ...brain.actionCounts },
+    })
 
     for (const action of AGENT_ACTIONS) {
       actionCounts[action] += brain.actionCounts[action]
@@ -336,8 +364,13 @@ export function summarizeLearning(agents: Agent[], learningEnabled: boolean): Le
     averageQValue: qCount === 0 ? 0 : qSum / qCount,
     explorationRate: exploreCount === 0 ? 0 : exploreSum / exploreCount,
     visitedStates,
+    maxVisitedStates,
+    averageVisitedStates: agentActionCounts.length === 0 ? 0 : visitedStates / agentActionCounts.length,
+    qTableCells,
+    stateSpaceSize: STATE_SPACE_SIZE,
     learningEnabled,
     hasLearningSamples: totalLearningSteps > 0,
     actionCounts,
+    agentActionCounts: agentActionCounts.sort((left, right) => right.total - left.total),
   }
 }

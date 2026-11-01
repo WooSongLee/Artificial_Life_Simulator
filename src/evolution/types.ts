@@ -6,6 +6,10 @@ export const GENOME_GENES = [
   'explorationRate',
   'libido',
   'lifespan',
+  'strength',
+  'aggression',
+  'caution',
+  'toolAffinity',
 ] as const
 
 export type GenomeGene = (typeof GENOME_GENES)[number]
@@ -18,6 +22,10 @@ export interface Genome {
   explorationRate: number
   libido: number
   lifespan: number
+  strength: number
+  aggression: number
+  caution: number
+  toolAffinity: number
 }
 
 export interface GeneRange {
@@ -31,6 +39,7 @@ export interface EvolutionConfig {
   mutationScale: number
   populationLimit: number
   inheritQTable: boolean
+  geneticsEnabled: boolean
 }
 
 export type GenerationEndReason = 'birth' | 'extinction'
@@ -53,6 +62,10 @@ export interface GenerationRecord {
   averageEnergyEfficiency: number
   averageLearningRate: number
   averageExplorationRate: number
+  averageStrength: number | null
+  averageAggression: number | null
+  averageCaution: number | null
+  averageToolAffinity: number | null
   hasLearningSamples: boolean
   mutation: MutationSummary
   endedAtTick: number

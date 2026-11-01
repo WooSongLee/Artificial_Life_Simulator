@@ -87,6 +87,84 @@ export function buildComparisonRows(experiments: ComparableExperiment[]): Experi
       format: 'number',
       values: values((item) => item.statistics.averageGenome.lifespan),
     },
+    {
+      key: 'genome.strength',
+      label: 'Avg Strength',
+      format: 'number',
+      values: values((item) => item.statistics.averageGenome.strength),
+    },
+    {
+      key: 'genome.aggression',
+      label: 'Avg Aggression',
+      format: 'number',
+      values: values((item) => item.statistics.averageGenome.aggression),
+    },
+    {
+      key: 'genome.caution',
+      label: 'Avg Caution',
+      format: 'number',
+      values: values((item) => item.statistics.averageGenome.caution),
+    },
+    {
+      key: 'genome.toolAffinity',
+      label: 'Avg Tool Affinity',
+      format: 'number',
+      values: values((item) => item.statistics.averageGenome.toolAffinity),
+    },
+    {
+      key: 'foodEaten',
+      label: 'Food Eaten',
+      format: 'integer',
+      values: values((item) => item.statistics.foodEaten ?? 0),
+    },
+    {
+      key: 'resourcesGathered',
+      label: 'Resources Gathered',
+      format: 'integer',
+      values: values((item) => item.statistics.resourcesGathered ?? 0),
+    },
+    {
+      key: 'toolUsageSuccessRate',
+      label: 'Tool Usage Success',
+      format: 'percent',
+      values: values((item) => item.statistics.toolUsageSuccessRate ?? null),
+    },
+    {
+      key: 'damageDealt',
+      label: 'Damage Dealt',
+      format: 'number',
+      values: values((item) => item.statistics.damageDealt ?? 0),
+    },
+    {
+      key: 'damageReceived',
+      label: 'Damage Received',
+      format: 'number',
+      values: values((item) => item.statistics.damageReceived ?? 0),
+    },
+    {
+      key: 'combatDeaths',
+      label: 'Combat Deaths',
+      format: 'integer',
+      values: values((item) => item.statistics.combatDeaths ?? 0),
+    },
+    {
+      key: 'combatSurvivalRate',
+      label: 'Combat Survival',
+      format: 'percent',
+      values: values((item) => item.statistics.combatSurvivalRate ?? null),
+    },
+    {
+      key: 'reproductionCount',
+      label: 'Reproduction',
+      format: 'integer',
+      values: values((item) => item.statistics.reproductionCount ?? 0),
+    },
+    {
+      key: 'visitedStates',
+      label: 'Visited Q States',
+      format: 'integer',
+      values: values((item) => item.statistics.visitedStates ?? 0),
+    },
   ]
 }
 

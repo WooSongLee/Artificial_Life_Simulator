@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { formatMigrationNotice } from '../experiments/migrate'
 import { applyExperimentBrains, createExperimentIdentity } from '../experiments/snapshot'
 import type { ExperimentRecord } from '../experiments/types'
 import { DEFAULT_EVOLUTION_CONFIG } from '../evolution/constants'
@@ -14,6 +15,11 @@ import {
   DEFAULT_LEARNING_CONFIG,
   DEFAULT_REWARD_CONFIG,
 } from '../learning/constants'
+import {
+  removeActionEvents,
+  resetActionEvents,
+  setActionEventRecordStride,
+} from '../learning/actionEvents'
 import { ensureBrain, removeBrains, resetBrains, setBrain } from '../learning/brain'
 import type { LearningConfig } from '../learning/types'
 import {
@@ -39,6 +45,7 @@ import type { GenerationRecord } from '../evolution/types'
 
 const initialWorld = createInitialWorld(undefined, {
   learningDefaults: learningDefaultsFrom(DEFAULT_LEARNING_CONFIG),
+  geneticsEnabled: DEFAULT_EVOLUTION_CONFIG.geneticsEnabled,
 })
 resetBrains(initialWorld.agents, DEFAULT_LEARNING_CONFIG)
 
@@ -53,7 +60,9 @@ function isSelectionPresent(id: string | null, world: WorldState): boolean {
   if (!id) return false
   return (
     world.objects.some((object) => object.id === id) ||
-    world.agents.some((agent) => agent.id === id)
+    world.agents.some((agent) => agent.id === id) ||
+    world.forageNodes.some((node) => node.id === id) ||
+    world.worldTools.some((tool) => tool.id === id)
   )
 }
 
@@ -105,8 +114,10 @@ function applySimulationSteps(
   let generationHistory = state.generationHistory
   let learningHistory = state.learningHistory
   const started = budgetMs === undefined ? 0 : performance.now()
+  setActionEventRecordStride(Math.max(1, Math.ceil(steps / 8)))
 
-  for (let step = 0; step < steps; step += 1) {
+  try {
+    for (let step = 0; step < steps; step += 1) {
     const next = stepSimulation(
       { tick, world },
       dt,
@@ -132,6 +143,7 @@ function applySimulationSteps(
     }
     if (next.removedAgentIds.length > 0) {
       removeBrains(next.removedAgentIds)
+      removeActionEvents(next.removedAgentIds)
     }
     if (next.recordedGeneration !== null) {
       generationHistory = recordFinishedGeneration(
@@ -165,6 +177,9 @@ function applySimulationSteps(
       break
     }
   }
+  } finally {
+    setActionEventRecordStride(1)
+  }
 
   return {
     tick,
@@ -180,11 +195,18 @@ function applySimulationSteps(
   }
 }
 
-function rebuildWorld(config: WorldConfig, learningConfig: LearningConfig, learningEnabled: boolean) {
+function rebuildWorld(
+  config: WorldConfig,
+  learningConfig: LearningConfig,
+  learningEnabled: boolean,
+  geneticsEnabled = DEFAULT_EVOLUTION_CONFIG.geneticsEnabled,
+) {
   const world = createInitialWorld(config, {
     learningDefaults: learningDefaultsFrom(learningConfig),
+    geneticsEnabled,
   })
   resetBrains(world.agents, learningConfig)
+  resetActionEvents()
   return {
     world,
     selectedObjectId: null,
@@ -221,6 +243,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   pendingWorldConfig: null,
   experiment: createExperimentIdentity(),
   hydrated: false,
+  migrationNotice: null,
 
   play: () =>
     set((state) => (state.status === 'ended' ? state : { status: 'running' as const })),
@@ -232,6 +255,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         activeWorldConfig(state),
         state.learningConfig,
         state.learningEnabled,
+        state.evolutionConfig.geneticsEnabled,
       )
       return {
         status: 'idle' as const,
@@ -257,6 +281,29 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     })),
   setLearningEnabled: (enabled) =>
     set((state) => ({ learningEnabled: enabled, experiment: markDirty(state) })),
+  setGeneticsEnabled: (enabled) =>
+    set((state) => {
+      const evolutionConfig = {
+        ...state.evolutionConfig,
+        geneticsEnabled: enabled,
+      }
+      if (canRebuildWorld(state)) {
+        return {
+          evolutionConfig,
+          ...rebuildWorld(
+            activeWorldConfig(state),
+            state.learningConfig,
+            state.learningEnabled,
+            enabled,
+          ),
+          experiment: markDirty(state),
+        }
+      }
+      return {
+        evolutionConfig,
+        experiment: markDirty(state),
+      }
+    }),
   setInheritQTable: (enabled) =>
     set((state) => ({
       evolutionConfig: {
@@ -288,7 +335,12 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
 
       if (canRebuildWorld(state)) {
         return {
-          ...rebuildWorld(nextConfig, state.learningConfig, state.learningEnabled),
+          ...rebuildWorld(
+            nextConfig,
+            state.learningConfig,
+            state.learningEnabled,
+            state.evolutionConfig.geneticsEnabled,
+          ),
           experiment: markDirty(state),
         }
       }
@@ -304,8 +356,10 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         agentCount,
         Math.random,
         learningDefaultsFrom(state.learningConfig),
+        state.evolutionConfig.geneticsEnabled,
       )
       removeBrains(removedAgentIds)
+      removeActionEvents(removedAgentIds)
       for (const agent of world.agents) {
         ensureBrain(agent.id, state.learningConfig, agent.genome.explorationRate)
       }
@@ -331,13 +385,26 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       const liveChanged =
         next.size !== state.world.config.size ||
         next.initialFoodCount !== state.world.config.initialFoodCount ||
+        next.initialBerryCount !== state.world.config.initialBerryCount ||
+        next.initialRootCount !== state.world.config.initialRootCount ||
+        next.initialBasketCount !== state.world.config.initialBasketCount ||
+        next.initialStickCount !== state.world.config.initialStickCount ||
+        next.initialSpearCount !== state.world.config.initialSpearCount ||
+        next.initialShieldCount !== state.world.config.initialShieldCount ||
         next.obstacleDensity !== state.world.config.obstacleDensity ||
         next.resourceDistribution !== state.world.config.resourceDistribution ||
-        next.agentCount !== state.world.config.agentCount
+        next.agentCount !== state.world.config.agentCount ||
+        next.seed !== state.world.config.seed ||
+        next.terrainPreset !== state.world.config.terrainPreset
 
       if (canRebuildWorld(state) && liveChanged) {
         return {
-          ...rebuildWorld(next, state.learningConfig, state.learningEnabled),
+          ...rebuildWorld(
+            next,
+            state.learningConfig,
+            state.learningEnabled,
+            state.evolutionConfig.geneticsEnabled,
+          ),
           cameraResetToken:
             next.size === state.world.config.size
               ? state.cameraResetToken
@@ -361,13 +428,18 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         pendingWorldConfig: liveChanged
           ? next
           : state.pendingWorldConfig
-            ? { ...state.pendingWorldConfig, foodRegenRate: next.foodRegenRate }
+            ? {
+                ...state.pendingWorldConfig,
+                foodRegenRate: next.foodRegenRate,
+                forageRegenRate: next.forageRegenRate,
+              }
             : null,
         world: {
           ...state.world,
           config: {
             ...state.world.config,
             foodRegenRate: next.foodRegenRate,
+            forageRegenRate: next.forageRegenRate,
           },
         },
         experiment: markDirty(state),
@@ -402,12 +474,19 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       status: 'idle' as const,
       tick: 0,
       speed: state.speed,
-      ...rebuildWorld(activeWorldConfig(state), state.learningConfig, state.learningEnabled),
+      ...rebuildWorld(
+        activeWorldConfig(state),
+        state.learningConfig,
+        state.learningEnabled,
+        state.evolutionConfig.geneticsEnabled,
+      ),
       experiment: createExperimentIdentity(),
+      migrationNotice: null,
     })),
   loadExperimentRecord: (record: ExperimentRecord) =>
     set((state) => {
       applyExperimentBrains(record)
+      resetActionEvents()
       const status = record.status === 'running' ? 'paused' : record.status
       return {
         status,
@@ -421,7 +500,14 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         learningEnabled: record.learningEnabled,
         learningConfig: record.learningConfig,
         rewardConfig: record.rewardConfig,
-        evolutionConfig: record.evolutionConfig,
+        evolutionConfig: {
+          ...DEFAULT_EVOLUTION_CONFIG,
+          ...record.evolutionConfig,
+          geneticsEnabled:
+            typeof record.evolutionConfig.geneticsEnabled === 'boolean'
+              ? record.evolutionConfig.geneticsEnabled
+              : true,
+        },
         pendingWorldConfig:
           JSON.stringify(record.worldConfig) === JSON.stringify(record.world.config)
             ? null
@@ -435,8 +521,10 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         },
         cameraResetToken: state.cameraResetToken + 1,
         hydrated: true,
+        migrationNotice: formatMigrationNotice(record),
       }
     }),
+  dismissMigrationNotice: () => set({ migrationNotice: null }),
   markSaved: (updatedAt) =>
     set((state) => ({
       experiment: {
@@ -452,7 +540,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         ...state.world,
         objects: [
           ...state.world.objects,
-          createWorldObject(type, state.world.config, state.world.objects),
+          createWorldObject(type, state.world.config, state.world.objects, Math.random, undefined, state.world.terrain),
         ],
       },
       experiment: markDirty(state),

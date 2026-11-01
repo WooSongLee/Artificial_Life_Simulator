@@ -1,7 +1,18 @@
 import type { Genome, GenomeGene } from '../evolution/types'
 import type { AgentAction } from '../learning/types'
+import type { CombatCue } from './combat'
+import type { EquippedTool } from './forage'
+
+export type DeathCause = 'health' | 'age' | 'combat'
 
 export interface AgentPosition {
+  x: number
+  z: number
+}
+
+export interface ActionTarget {
+  kind: string
+  id: string | null
   x: number
   z: number
 }
@@ -19,9 +30,10 @@ export interface Agent {
   maxLifespan: number
   desire: number
   alive: boolean
-  deathCause: 'health' | 'age' | null
+  deathCause: DeathCause | null
   generation: number
   parentIds: [string, string] | null
+  parentGenomes: [Genome, Genome] | null
   inheritParentId: string | null
   genome: Genome
   mutatedGenes: GenomeGene[]
@@ -34,6 +46,13 @@ export interface Agent {
   lastAction: AgentAction | null
   lastReward: number
   lastStateKey: string | null
+  equipment: EquippedTool | null
+  defendTimeLeft: number
+  attackCooldownLeft: number
+  lastAttackerId: string | null
+  lastCombatTick: number
+  combatCue: CombatCue | null
+  actionTarget: ActionTarget | null
 }
 
 export interface AgentTrailPoint {

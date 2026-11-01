@@ -2,7 +2,7 @@ import { countMatingPairs } from '../evolution/mating'
 import { generationElapsed } from '../evolution/generations'
 import { SIMULATION_STEP_DT } from '../simulation/constants'
 import { summarizeAgents } from '../utils/agentStats'
-import { countObjects } from '../utils/worldStats'
+import { countForage, countObjects } from '../utils/worldStats'
 import { useThrottledStore } from './useThrottledStore'
 
 export function useWorldStats() {
@@ -19,6 +19,7 @@ export function useWorldStats() {
       status: state.status,
       simulationTime: state.tick * SIMULATION_STEP_DT,
       ...countObjects(state.world.objects),
+      ...countForage(state.world),
       ...summarizeAgents(state.world.agents),
       generation: state.world.generation,
       generationElapsed: generationElapsed(state.world.generationStartTick, state.tick),

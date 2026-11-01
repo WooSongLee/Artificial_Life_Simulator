@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   deleteExperiment,
   downloadExperimentJson,
+  formatMigrationNotice,
   formatValidationIssues,
   getExperiment,
   listExperiments,
@@ -77,7 +78,8 @@ export function useExperimentLibrary() {
           throw new Error('Saved experiment is missing or invalid')
         }
         useSimulationStore.getState().loadExperimentRecord(record)
-        return `Loaded “${record.name}”.`
+        const notice = formatMigrationNotice(record)
+        return notice ? `Loaded “${record.name}”. ${notice}` : `Loaded “${record.name}”.`
       }),
     [run],
   )
@@ -126,7 +128,8 @@ export function useExperimentLibrary() {
         const imported = prepareImportedExperiment(parsed.value)
         await saveExperiment(imported)
         useSimulationStore.getState().loadExperimentRecord(imported)
-        return `Imported “${imported.name}”.`
+        const notice = formatMigrationNotice(imported)
+        return notice ? `Imported “${imported.name}”. ${notice}` : `Imported “${imported.name}”.`
       }),
     [run],
   )

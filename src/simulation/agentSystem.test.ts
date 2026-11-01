@@ -22,6 +22,12 @@ function readyAgent(overrides: Record<string, unknown> = {}) {
     agentCount: 1,
     obstacleDensity: 0,
     initialFoodCount: 4,
+    initialBerryCount: 0,
+    initialRootCount: 0,
+    initialBasketCount: 0,
+    initialStickCount: 0,
+    initialSpearCount: 0,
+    initialShieldCount: 0,
   })
   const agent = world.agents[0]
   if (!agent) throw new Error('expected an agent')
@@ -112,6 +118,18 @@ describe('death condition', () => {
     expect(result.agent.alive).toBe(false)
     expect(result.agent.deathCause).toBe('age')
     expect(result.agent.health).toBe(0)
+  })
+
+  it('does not kill by age when genetics is off', () => {
+    const { world, agent } = readyAgent()
+    const aged = { ...agent, age: agent.maxLifespan - SIMULATION_STEP_DT / 2 }
+    const result = updateAgent(aged, { ...world, agents: [aged] }, SIMULATION_STEP_DT, {
+      ...learningOff(),
+      geneticsEnabled: false,
+    })
+    expect(result.agent.alive).toBe(true)
+    expect(result.agent.deathCause).toBeNull()
+    expect(result.agent.age).toBeGreaterThan(aged.age)
   })
 
   it('treats health <= 0 as death even if alive was still true', () => {

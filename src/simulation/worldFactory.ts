@@ -1,3 +1,4 @@
+import type { TerrainGrid } from '../types/terrain'
 import type { WorldConfig, WorldObject, WorldObjectType, WorldState } from '../types/world'
 import { createId } from '../utils/id'
 import { mulberry32, randomInRange, type Rng } from '../utils/random'
@@ -9,11 +10,14 @@ import {
   getObstacleCounts,
   WORLD_SEED,
 } from './constants'
+import { createForageContents } from './forage'
+import { createEmptyOutcomeStats } from './outcomes'
 import {
   createClusterCenters,
   findDistributedPosition,
   type ClusterCenter,
 } from './spatial'
+import { generateTerrainGrid, isTerrainWalkable, pickTerrainWeightedPoint } from './terrain'
 
 const MIN_DISTANCE: Record<WorldObjectType, number> = {
   tree: 3.2,
@@ -30,6 +34,7 @@ const SCALE_RANGE: Record<WorldObjectType, readonly [number, number]> = {
 export interface WorldCreateOptions {
   seed?: number
   learningDefaults?: CreateAgentOptions['learningDefaults']
+  geneticsEnabled?: boolean
 }
 
 export type ClusterCenters = Record<WorldObjectType, ClusterCenter[]>
@@ -61,14 +66,17 @@ export function createWorldObject(
   existing: WorldObject[],
   rng: Rng = Math.random,
   centers?: ClusterCenter[],
+  terrain?: TerrainGrid,
 ): WorldObject {
   const minDistance = MIN_DISTANCE[type]
-  const { x, z } = findDistributedPosition(
-    rng,
-    config,
-    (px, pz) => isTooClose(existing, px, pz, minDistance),
-    centers,
-  )
+  const isBlocked = (px: number, pz: number) =>
+    isTooClose(existing, px, pz, minDistance) ||
+    (terrain !== undefined && !isTerrainWalkable(terrain, px, pz, config.size))
+  const { x, z } = terrain
+    ? pickTerrainWeightedPoint(rng, config, terrain, type, isBlocked, () =>
+        findDistributedPosition(rng, config, isBlocked, centers),
+      )
+    : findDistributedPosition(rng, config, isBlocked, centers)
   const [minScale, maxScale] = SCALE_RANGE[type]
 
   return {
@@ -88,8 +96,10 @@ export function generateWorld(
   const nextConfig = clampWorldConfig({
     ...DEFAULT_WORLD_CONFIG,
     ...config,
+    seed,
   })
   const rng = mulberry32(seed)
+  const terrain = generateTerrainGrid(nextConfig)
   const objects: WorldObject[] = []
   const centers = createClusterMap(rng, nextConfig)
   const obstacles = getObstacleCounts(nextConfig)
@@ -102,18 +112,24 @@ export function generateWorld(
 
   for (const [type, count] of placements) {
     for (let i = 0; i < count; i += 1) {
-      objects.push(createWorldObject(type, nextConfig, objects, rng, centers[type]))
+      objects.push(createWorldObject(type, nextConfig, objects, rng, centers[type], terrain))
     }
   }
 
+  const forage = createForageContents(nextConfig, objects, terrain, rng)
   const worldWithoutAgents: WorldState = {
     config: nextConfig,
     objects,
     agents: [],
+    forageNodes: forage.forageNodes,
+    worldTools: forage.worldTools,
     foodSpawnCooldown: 0,
+    forageSpawnCooldown: 0,
     generation: 1,
     generationStartTick: 0,
     birthCount: 0,
+    terrain,
+    outcomeStats: createEmptyOutcomeStats(),
   }
 
   return {
@@ -123,6 +139,7 @@ export function generateWorld(
       rng,
       nextConfig.agentCount,
       options.learningDefaults,
+      options.geneticsEnabled,
     ),
   }
 }
@@ -131,7 +148,7 @@ export function createInitialWorld(
   config: WorldConfig = DEFAULT_WORLD_CONFIG,
   options: WorldCreateOptions = {},
 ): WorldState {
-  return generateWorld(options.seed ?? WORLD_SEED, config, options)
+  return generateWorld(options.seed ?? config.seed ?? WORLD_SEED, config, options)
 }
 
 function countFood(objects: WorldObject[]): number {
@@ -147,7 +164,7 @@ export function topUpFood(world: WorldState, rng: Rng = Math.random): WorldObjec
     : undefined
 
   while (foodCount < target) {
-    objects.push(createWorldObject('food', world.config, objects, rng, centers))
+    objects.push(createWorldObject('food', world.config, objects, rng, centers, world.terrain))
     foodCount += 1
   }
 
@@ -159,6 +176,7 @@ export function adjustWorldPopulation(
   agentCount: number,
   rng: Rng = Math.random,
   learningDefaults?: CreateAgentOptions['learningDefaults'],
+  geneticsEnabled = true,
 ): { world: WorldState; removedAgentIds: string[] } {
   const nextConfig = clampWorldConfig({
     ...world.config,
@@ -172,6 +190,7 @@ export function adjustWorldPopulation(
       grown.push(
         createAgent({ ...world, config: nextConfig, agents: grown }, grown, rng, {
           learningDefaults,
+          geneticsEnabled,
         }),
       )
     }

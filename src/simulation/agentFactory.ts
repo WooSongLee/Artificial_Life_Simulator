@@ -1,4 +1,4 @@
-import { createRandomGenome } from '../evolution/genome'
+import { createDefaultGenome, createRandomGenome } from '../evolution/genome'
 import type { Genome, GenomeGene } from '../evolution/types'
 import type { Agent, AgentPosition } from '../types/agent'
 import type { WorldState } from '../types/world'
@@ -18,9 +18,11 @@ export interface CreateAgentOptions {
   genome?: Genome
   generation?: number
   parentIds?: [string, string] | null
+  parentGenomes?: [Genome, Genome] | null
   inheritParentId?: string | null
   mutatedGenes?: GenomeGene[]
   learningDefaults?: Pick<Genome, 'learningRate' | 'explorationRate'>
+  geneticsEnabled?: boolean
   near?: AgentPosition
 }
 
@@ -39,7 +41,8 @@ function pickSpawnPosition(
   near?: AgentPosition,
 ): AgentPosition {
   const isBlocked = (px: number, pz: number) =>
-    isBlockedSpawn(px, pz, world.objects) || isTooCloseToAgents(existing, px, pz)
+    isBlockedSpawn(px, pz, world.objects, undefined, world.terrain, world.config.size) ||
+    isTooCloseToAgents(existing, px, pz)
 
   if (near) {
     for (let attempt = 0; attempt < 24; attempt += 1) {
@@ -69,7 +72,11 @@ export function createAgent(
     AGENT_WANDER_INTERVAL_RANGE[0],
     AGENT_WANDER_INTERVAL_RANGE[1],
   )
-  const genome = options.genome ?? createRandomGenome(rng, options.learningDefaults)
+  const genome =
+    options.genome ??
+    (options.geneticsEnabled === false
+      ? createDefaultGenome(options.learningDefaults)
+      : createRandomGenome(rng, options.learningDefaults))
 
   return {
     id: createId('agent'),
@@ -87,6 +94,7 @@ export function createAgent(
     deathCause: null,
     generation: options.generation ?? world.generation,
     parentIds: options.parentIds ?? null,
+    parentGenomes: options.parentGenomes ?? null,
     inheritParentId: options.inheritParentId ?? null,
     genome,
     mutatedGenes: options.mutatedGenes ?? [],
@@ -99,6 +107,13 @@ export function createAgent(
     lastAction: null,
     lastReward: 0,
     lastStateKey: null,
+    equipment: null,
+    defendTimeLeft: 0,
+    attackCooldownLeft: 0,
+    lastAttackerId: null,
+    lastCombatTick: 0,
+    combatCue: null,
+    actionTarget: null,
   }
 }
 
@@ -125,11 +140,12 @@ export function createInitialAgents(
   rng: Rng,
   count = world.config.agentCount,
   learningDefaults?: CreateAgentOptions['learningDefaults'],
+  geneticsEnabled = true,
 ): Agent[] {
   const agents: Agent[] = []
 
   for (let i = 0; i < count; i += 1) {
-    agents.push(createAgent(world, agents, rng, { learningDefaults }))
+    agents.push(createAgent(world, agents, rng, { learningDefaults, geneticsEnabled }))
   }
 
   return agents

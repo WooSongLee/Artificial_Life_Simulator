@@ -1,4 +1,10 @@
-export { DEFAULT_EVOLUTION_CONFIG, GENE_RANGES, GENERATION_DURATION_PRESETS } from './constants'
+export {
+  DEFAULT_EVOLUTION_CONFIG,
+  GENE_DEFAULTS,
+  GENE_RANGES,
+  GENERATION_DURATION_PRESETS,
+  isGeneticsEnabled,
+} from './constants'
 export { crossoverGenomes } from './crossover'
 export {
   appendGenerationRecord,
@@ -7,7 +13,7 @@ export {
   generationRemaining,
   hasGenerationRecord,
 } from './generations'
-export { clampGenome, createRandomGenome } from './genome'
+export { clampGenome, createDefaultGenome, createRandomGenome, normalizeGenome } from './genome'
 export { assignChildBrains, cloneQTable, inheritBrain } from './inheritance'
 export { processMating } from './mating'
 export { mutateGenome } from './mutation'
