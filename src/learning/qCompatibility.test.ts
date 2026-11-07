@@ -5,7 +5,7 @@ import { decodeObservation, encodeObservation } from './observation'
 import type { Observation } from './types'
 
 const currentKey =
-  'mid|high|forward|close|no|grassland|forest|none|none|none|none|out|high'
+  'mid|high|forward|close|no|grassland|forest|none|none|none|none|out|high|none|na'
 
 describe('q-table compatibility', () => {
   it('pads append-only action rows and keeps existing Q values', () => {
@@ -85,6 +85,8 @@ describe('q-table compatibility', () => {
       agentDirection: 'none',
       agentDistance: 'out',
       health: 'high',
+      interactable: 'none',
+      drive: 'na',
     }
     const second = { ...first, terrain: 'wetland' as const }
     expect(encodeObservation(first)).not.toBe(encodeObservation(second))

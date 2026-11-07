@@ -1,3 +1,4 @@
+import { SIMULATION_MODE_LABELS } from '../../simulation/labMode'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { SIMULATION_STATUS_LABEL } from '../../utils/status'
 
@@ -5,7 +6,9 @@ export function Header() {
   const status = useSimulationStore((state) => state.status)
   const learningEnabled = useSimulationStore((state) => state.learningEnabled)
   const geneticsEnabled = useSimulationStore((state) => state.evolutionConfig.geneticsEnabled)
+  const mode = useSimulationStore((state) => state.pendingWorldConfig?.mode ?? state.world.config.mode)
   const experiment = useSimulationStore((state) => state.experiment)
+  const isLab = mode === 'human_behavior_lab'
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-lab-border bg-lab-panel px-4">
@@ -37,11 +40,16 @@ export function Header() {
           {SIMULATION_STATUS_LABEL[status]}
         </span>
         <span className="font-mono tracking-wide text-lab-muted uppercase">
-          · {learningEnabled ? 'Learning On' : 'Learning Off'}
+          · {SIMULATION_MODE_LABELS[mode]}
         </span>
         <span className="font-mono tracking-wide text-lab-muted uppercase">
-          · {geneticsEnabled ? 'Genetics On' : 'Genetics Off'}
+          · {learningEnabled ? 'Learning On' : 'Learning Off'}
         </span>
+        {!isLab ? (
+          <span className="font-mono tracking-wide text-lab-muted uppercase">
+            · {geneticsEnabled ? 'Genetics On' : 'Genetics Off'}
+          </span>
+        ) : null}
       </div>
     </header>
   )

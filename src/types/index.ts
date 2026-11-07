@@ -7,7 +7,16 @@ export type {
   MutationSummary,
 } from '../evolution/types'
 export type { AgentAction, LearningConfig, LearningStats, Observation, RewardConfig } from '../learning/types'
-export type { ActionTarget, Agent, AgentPosition, AgentStats, AgentTrail, AgentTrailPoint, DeathCause } from './agent'
+export type {
+  ActionTarget,
+  Agent,
+  AgentPosition,
+  AgentStats,
+  AgentTrail,
+  AgentTrailPoint,
+  DeathCause,
+  TrailChoiceKind,
+} from './agent'
 export type { AttackIntent, CombatCue, CombatCueKind, CombatHit } from './combat'
 
 export type {
@@ -19,6 +28,24 @@ export type {
 } from './forage'
 
 export type {
+  DoorInteractable,
+  Interactable,
+  InteractableKind,
+  LookoutInteractable,
+  MovableBoxInteractable,
+  RestBedInteractable,
+  SwitchInteractable,
+} from './interactable'
+export {
+  INTERACTABLE_KINDS,
+  isDoor,
+  isLookout,
+  isMovableBox,
+  isRestBed,
+  isSwitch,
+} from './interactable'
+
+export type {
   TerrainGrid,
   TerrainPreset,
   TerrainProfile,
@@ -28,6 +55,7 @@ export type {
 export type {
   ObjectDefinition,
   ResourceDistribution,
+  SimulationMode,
   Vec3,
   WorldConfig,
   WorldObject,
@@ -35,6 +63,7 @@ export type {
   WorldOutcomeStats,
   WorldState,
 } from './world'
+export { SIMULATION_MODES } from './world'
 
 export type {
   LearningHistoryPoint,

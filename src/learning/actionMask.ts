@@ -1,5 +1,7 @@
 import { canAttemptAttack, canDefendOrFlee } from '../simulation/combat'
 import { findGatherableNode, findPickupTool } from '../simulation/forage'
+import { canInteractGatherTarget } from '../simulation/interactables'
+import { allowsCombat, clampSimulationMode } from '../simulation/labMode'
 import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
 import { findFoodInEatRange } from './observation'
@@ -16,14 +18,17 @@ export function legalActionsFor(agent: Agent, world: WorldState): AgentAction[] 
   if (findPickupTool(agent, world)) {
     legal.push('PICK_UP')
   }
-  if (findGatherableNode(agent, world)) {
+  if (findGatherableNode(agent, world) || canInteractGatherTarget(agent, world)) {
+    // STEP 16: reuse GATHER for switch toggle / box push (no Action schema bump).
     legal.push('GATHER')
   }
-  if (canAttemptAttack(agent, world)) {
-    legal.push('ATTACK')
-  }
-  if (canDefendOrFlee(agent, world)) {
-    legal.push('DEFEND', 'FLEE')
+  if (allowsCombat(clampSimulationMode(world.config.mode))) {
+    if (canAttemptAttack(agent, world)) {
+      legal.push('ATTACK')
+    }
+    if (canDefendOrFlee(agent, world)) {
+      legal.push('DEFEND', 'FLEE')
+    }
   }
   return legal
 }

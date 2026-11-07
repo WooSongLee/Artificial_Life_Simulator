@@ -3,6 +3,17 @@ import type { TerrainPreset, TerrainProfile, TerrainRatioMap, TerrainType } from
 import { TERRAIN_PRESETS } from '../types/terrain'
 import type { WorldConfig } from '../types/world'
 import { clamp } from '../utils/math'
+import {
+  clampLabCondition,
+  DEFAULT_LAB_CONDITION,
+  effectsFromWorldConfig,
+} from './labConditions'
+import {
+  applyModeToWorldConfig,
+  clampSimulationMode,
+  DEFAULT_SIMULATION_MODE,
+  isHumanBehaviorLab,
+} from './labMode'
 
 export const WORLD_SEED = 20261031
 
@@ -164,6 +175,8 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   size: 48,
   gridDivisions: 24,
   agentCount: INITIAL_AGENT_COUNT,
+  mode: DEFAULT_SIMULATION_MODE,
+  labCondition: DEFAULT_LAB_CONDITION,
   initialFoodCount: 40,
   foodRegenRate: 2,
   obstacleDensity: DEFAULT_OBSTACLE_DENSITY,
@@ -204,6 +217,11 @@ export const LEARNING_COMPARISON_WINDOW = 30
 export const DEFAULT_CAMERA_POSITION = [18, 22, 18] as const
 export const DEFAULT_CAMERA_TARGET = [0, 0, 0] as const
 export const DEFAULT_CAMERA_FOV = 40
+
+/** Lab: close third-person so walk/run/gesture read on one human. */
+export const LAB_CAMERA_POSITION = [1.65, 1.35, 2.15] as const
+export const LAB_FOLLOW_HEIGHT = 1.05
+export const LAB_CAMERA_MIN_DISTANCE = 1.05
 
 export const CAMERA_MIN_DISTANCE = 10
 export const CAMERA_MAX_DISTANCE = 90
@@ -275,11 +293,18 @@ export function getTargetFoodCount(agentCount: number): number {
 }
 
 export function getConfiguredFoodCount(config: WorldConfig): number {
-  return clamp(Math.round(config.initialFoodCount), MIN_FOOD_COUNT, MAX_FOOD_COUNT)
+  const base = clamp(Math.round(config.initialFoodCount), MIN_FOOD_COUNT, MAX_FOOD_COUNT)
+  if (!isHumanBehaviorLab(config.mode)) return base
+  const mult = effectsFromWorldConfig(config).foodCountMult
+  return clamp(Math.max(MIN_FOOD_COUNT, Math.round(base * mult)), MIN_FOOD_COUNT, MAX_FOOD_COUNT)
 }
 
 export function getFoodSpawnInterval(config: WorldConfig): number {
-  return 1 / clamp(config.foodRegenRate, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE)
+  const rate = clamp(config.foodRegenRate, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE)
+  if (!isHumanBehaviorLab(config.mode)) return 1 / rate
+  const mult = effectsFromWorldConfig(config).foodRegenMult
+  const effective = clamp(rate * mult, MIN_FOOD_REGEN_RATE * 0.25, MAX_FOOD_REGEN_RATE)
+  return 1 / Math.max(0.05, effective)
 }
 
 export function getObstacleCounts(config: WorldConfig): { tree: number; rock: number } {
@@ -315,11 +340,16 @@ export function clampAgentCount(count: number): number {
 
 export function clampWorldConfig(config: WorldConfig): WorldConfig {
   const size = clampWorldSize(config.size)
-  return {
+  const mode = clampSimulationMode(config.mode)
+  const labCondition = clampLabCondition(config.labCondition)
+  const clamped: WorldConfig = {
     size,
     gridDivisions: gridDivisionsForSize(size),
     agentCount: clampAgentCount(config.agentCount),
-    initialFoodCount: getConfiguredFoodCount(config),
+    mode,
+    labCondition,
+    // Store the researcher-set food count; Lab condition mult applies in getConfiguredFoodCount.
+    initialFoodCount: clamp(Math.round(config.initialFoodCount), MIN_FOOD_COUNT, MAX_FOOD_COUNT),
     foodRegenRate: clamp(config.foodRegenRate, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE),
     obstacleDensity: clamp(config.obstacleDensity, MIN_OBSTACLE_DENSITY, MAX_OBSTACLE_DENSITY),
     resourceDistribution: config.resourceDistribution,
@@ -333,6 +363,7 @@ export function clampWorldConfig(config: WorldConfig): WorldConfig {
     initialSpearCount: clampCount(config.initialSpearCount, MIN_TOOL_COUNT, MAX_TOOL_COUNT),
     initialShieldCount: clampCount(config.initialShieldCount, MIN_TOOL_COUNT, MAX_TOOL_COUNT),
   }
+  return applyModeToWorldConfig(clamped)
 }
 
 function clampCount(value: number | undefined, min: number, max: number): number {

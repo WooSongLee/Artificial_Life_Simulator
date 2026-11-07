@@ -117,12 +117,13 @@ export function selectEpsilonGreedy(
   rng: () => number,
   legalActions: readonly AgentAction[] = AGENT_ACTIONS,
   selectionScores: readonly number[] = qValues,
+  exploreWeights: readonly number[] = EXPLORE_ACTION_WEIGHTS,
 ): ActionSelection {
   const legal: readonly AgentAction[] = legalActions.length > 0 ? legalActions : ['REST']
 
   if (rng() < epsilon) {
     return {
-      action: pickWeightedAction(EXPLORE_ACTION_WEIGHTS, rng, legal),
+      action: pickWeightedAction(exploreWeights, rng, legal),
       explored: true,
     }
   }

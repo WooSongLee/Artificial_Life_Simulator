@@ -25,10 +25,21 @@ import {
   TERRAIN_PRESET_LABELS,
   WORLD_SIZE_PRESETS,
 } from '../../simulation/constants'
+import {
+  LAB_CONDITION_LABELS,
+  LAB_CONDITIONS,
+} from '../../simulation/labConditions'
+import { SIMULATION_MODE_LABELS } from '../../simulation/labMode'
 import { OBJECT_REGISTRY } from '../../simulation/objectRegistry'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { TERRAIN_PRESETS } from '../../types/terrain'
-import { RESOURCE_DISTRIBUTIONS, type WorldObjectType } from '../../types/world'
+import {
+  RESOURCE_DISTRIBUTIONS,
+  SIMULATION_MODES,
+  type LabCondition,
+  type SimulationMode,
+  type WorldObjectType,
+} from '../../types/world'
 import { Hint } from '../ui/Hint'
 import { NumberField } from '../ui/NumberField'
 import { NumberStepper } from '../ui/NumberStepper'
@@ -59,6 +70,7 @@ export function SettingsPanel() {
   const setPopulationLimit = useSimulationStore((state) => state.setPopulationLimit)
   const mutationRate = useSimulationStore((state) => state.evolutionConfig.mutationRate)
   const speed = useSimulationStore((state) => state.speed)
+  const isLab = worldConfig.mode === 'human_behavior_lab'
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-lab-border bg-lab-panel xl:w-72">
@@ -70,6 +82,47 @@ export function SettingsPanel() {
             월드
           </SectionLabel>
           <div className="mt-2 space-y-1">
+            <Readout label="Mode" value={SIMULATION_MODE_LABELS[worldConfig.mode]} />
+            <div className="grid grid-cols-1 gap-1">
+              {SIMULATION_MODES.map((mode) => (
+                <PresetButton
+                  key={mode}
+                  active={worldConfig.mode === mode}
+                  onClick={() => setWorldConfig({ mode: mode as SimulationMode })}
+                >
+                  {SIMULATION_MODE_LABELS[mode]}
+                </PresetButton>
+              ))}
+            </div>
+            {isLab ? (
+              <>
+                <p className="pt-1 text-[12px] leading-5 text-lab-muted">
+                  Conditioned Behavior Lab: one agent, three chambers (survival / rest / lookout).
+                  Population, genetics, mating, lifespan death, and combat are disabled.
+                </p>
+                <Readout
+                  label="Lab Condition"
+                  value={LAB_CONDITION_LABELS[worldConfig.labCondition ?? 'baseline']}
+                />
+                <div className="grid grid-cols-1 gap-1">
+                  {LAB_CONDITIONS.map((condition) => (
+                    <PresetButton
+                      key={condition}
+                      active={(worldConfig.labCondition ?? 'baseline') === condition}
+                      onClick={() =>
+                        setWorldConfig({ labCondition: condition as LabCondition })
+                      }
+                    >
+                      {LAB_CONDITION_LABELS[condition]}
+                    </PresetButton>
+                  ))}
+                </div>
+                <p className="pt-1 text-[12px] leading-5 text-lab-muted">
+                  Conditions change chamber gates, food scarcity, and drive pressure. Apply / Reset
+                  to rebuild the lab.
+                </p>
+              </>
+            ) : null}
             <Readout label="World Size" value={`${worldConfig.size} × ${worldConfig.size}`} />
             <PresetRow
               values={WORLD_SIZE_PRESETS}
@@ -77,25 +130,31 @@ export function SettingsPanel() {
               format={(value) => `${value}`}
               onSelect={(size) => setWorldConfig({ size })}
             />
-            <NumberStepper
-              label="Initial Population"
-              value={worldConfig.agentCount}
-              min={MIN_AGENT_COUNT}
-              max={MAX_AGENT_COUNT}
-              onChange={setAgentCount}
-              title="시작 개체 수. 실행 중 줄이면 살아있는 개체부터 제거한다."
-            />
-            <div className="grid grid-cols-4 gap-1">
-              {AGENT_COUNT_PRESETS.map((count) => (
-                <PresetButton
-                  key={count}
-                  active={worldConfig.agentCount === count}
-                  onClick={() => setAgentCount(count)}
-                >
-                  {count}
-                </PresetButton>
-              ))}
-            </div>
+            {!isLab ? (
+              <>
+                <NumberStepper
+                  label="Initial Population"
+                  value={worldConfig.agentCount}
+                  min={MIN_AGENT_COUNT}
+                  max={MAX_AGENT_COUNT}
+                  onChange={setAgentCount}
+                  title="시작 개체 수. 실행 중 줄이면 살아있는 개체부터 제거한다."
+                />
+                <div className="grid grid-cols-4 gap-1">
+                  {AGENT_COUNT_PRESETS.map((count) => (
+                    <PresetButton
+                      key={count}
+                      active={worldConfig.agentCount === count}
+                      onClick={() => setAgentCount(count)}
+                    >
+                      {count}
+                    </PresetButton>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Readout label="Active Agents" value="1 (fixed)" />
+            )}
             <NumberStepper
               label="Initial Food"
               value={worldConfig.initialFoodCount}
@@ -147,20 +206,24 @@ export function SettingsPanel() {
               max={MAX_TOOL_COUNT}
               onChange={(initialStickCount) => setWorldConfig({ initialStickCount })}
             />
-            <NumberStepper
-              label="Spears"
-              value={worldConfig.initialSpearCount}
-              min={MIN_TOOL_COUNT}
-              max={MAX_TOOL_COUNT}
-              onChange={(initialSpearCount) => setWorldConfig({ initialSpearCount })}
-            />
-            <NumberStepper
-              label="Shields"
-              value={worldConfig.initialShieldCount}
-              min={MIN_TOOL_COUNT}
-              max={MAX_TOOL_COUNT}
-              onChange={(initialShieldCount) => setWorldConfig({ initialShieldCount })}
-            />
+            {!isLab ? (
+              <>
+                <NumberStepper
+                  label="Spears"
+                  value={worldConfig.initialSpearCount}
+                  min={MIN_TOOL_COUNT}
+                  max={MAX_TOOL_COUNT}
+                  onChange={(initialSpearCount) => setWorldConfig({ initialSpearCount })}
+                />
+                <NumberStepper
+                  label="Shields"
+                  value={worldConfig.initialShieldCount}
+                  min={MIN_TOOL_COUNT}
+                  max={MAX_TOOL_COUNT}
+                  onChange={(initialShieldCount) => setWorldConfig({ initialShieldCount })}
+                />
+              </>
+            ) : null}
             <Readout
               label="Obstacle Density"
               value={`${Math.round(worldConfig.obstacleDensity * 100)}%`}
@@ -332,6 +395,16 @@ export function SettingsPanel() {
               onChange={(pickupSuccess) => setRewardConfig({ pickupSuccess })}
             />
             <NumberField
+              label="Interact Success"
+              value={rewardConfig.interactSuccess}
+              min={REWARD_CONFIG_RANGES.interactSuccess.min}
+              max={REWARD_CONFIG_RANGES.interactSuccess.max}
+              step={0.5}
+              digits={1}
+              onChange={(interactSuccess) => setRewardConfig({ interactSuccess })}
+              hint="Lab switch toggle / box push reward."
+            />
+            <NumberField
               label="Wasted Energy"
               value={rewardConfig.wastedEnergy}
               min={REWARD_CONFIG_RANGES.wastedEnergy.min}
@@ -367,51 +440,60 @@ export function SettingsPanel() {
               digits={1}
               onChange={(efficientRest) => setRewardConfig({ efficientRest })}
             />
-            <NumberField
-              label="Attack Hit / dmg"
-              value={rewardConfig.attackHitUnit}
-              min={REWARD_CONFIG_RANGES.attackHitUnit.min}
-              max={REWARD_CONFIG_RANGES.attackHitUnit.max}
-              step={0.1}
-              digits={2}
-              onChange={(attackHitUnit) => setRewardConfig({ attackHitUnit })}
-            />
-            <NumberField
-              label="Attack Miss"
-              value={rewardConfig.attackMiss}
-              min={REWARD_CONFIG_RANGES.attackMiss.min}
-              max={REWARD_CONFIG_RANGES.attackMiss.max}
-              step={0.1}
-              digits={1}
-              onChange={(attackMiss) => setRewardConfig({ attackMiss })}
-            />
-            <NumberField
-              label="Damage Taken / dmg"
-              value={rewardConfig.damageTakenUnit}
-              min={REWARD_CONFIG_RANGES.damageTakenUnit.min}
-              max={REWARD_CONFIG_RANGES.damageTakenUnit.max}
-              step={0.1}
-              digits={2}
-              onChange={(damageTakenUnit) => setRewardConfig({ damageTakenUnit })}
-            />
-            <NumberField
-              label="Defend Reduce / dmg"
-              value={rewardConfig.defendReduceUnit}
-              min={REWARD_CONFIG_RANGES.defendReduceUnit.min}
-              max={REWARD_CONFIG_RANGES.defendReduceUnit.max}
-              step={0.1}
-              digits={2}
-              onChange={(defendReduceUnit) => setRewardConfig({ defendReduceUnit })}
-            />
-            <NumberField
-              label="Flee Success"
-              value={rewardConfig.fleeSuccess}
-              min={REWARD_CONFIG_RANGES.fleeSuccess.min}
-              max={REWARD_CONFIG_RANGES.fleeSuccess.max}
-              step={0.1}
-              digits={1}
-              onChange={(fleeSuccess) => setRewardConfig({ fleeSuccess })}
-            />
+            {!isLab ? (
+              <>
+                <NumberField
+                  label="Attack Hit / dmg"
+                  value={rewardConfig.attackHitUnit}
+                  min={REWARD_CONFIG_RANGES.attackHitUnit.min}
+                  max={REWARD_CONFIG_RANGES.attackHitUnit.max}
+                  step={0.1}
+                  digits={2}
+                  onChange={(attackHitUnit) => setRewardConfig({ attackHitUnit })}
+                />
+                <NumberField
+                  label="Attack Miss"
+                  value={rewardConfig.attackMiss}
+                  min={REWARD_CONFIG_RANGES.attackMiss.min}
+                  max={REWARD_CONFIG_RANGES.attackMiss.max}
+                  step={0.1}
+                  digits={1}
+                  onChange={(attackMiss) => setRewardConfig({ attackMiss })}
+                />
+                <NumberField
+                  label="Damage Taken / dmg"
+                  value={rewardConfig.damageTakenUnit}
+                  min={REWARD_CONFIG_RANGES.damageTakenUnit.min}
+                  max={REWARD_CONFIG_RANGES.damageTakenUnit.max}
+                  step={0.1}
+                  digits={2}
+                  onChange={(damageTakenUnit) => setRewardConfig({ damageTakenUnit })}
+                />
+                <NumberField
+                  label="Defend Reduce / dmg"
+                  value={rewardConfig.defendReduceUnit}
+                  min={REWARD_CONFIG_RANGES.defendReduceUnit.min}
+                  max={REWARD_CONFIG_RANGES.defendReduceUnit.max}
+                  step={0.1}
+                  digits={2}
+                  onChange={(defendReduceUnit) => setRewardConfig({ defendReduceUnit })}
+                />
+                <NumberField
+                  label="Flee Success"
+                  value={rewardConfig.fleeSuccess}
+                  min={REWARD_CONFIG_RANGES.fleeSuccess.min}
+                  max={REWARD_CONFIG_RANGES.fleeSuccess.max}
+                  step={0.1}
+                  digits={1}
+                  onChange={(fleeSuccess) => setRewardConfig({ fleeSuccess })}
+                />
+              </>
+            ) : (
+              <p className="pt-1 text-[12px] leading-5 text-lab-muted">
+                Combat reward weights are hidden in Human Behavior Lab. Attack, defend, and flee
+                stay masked and do not run.
+              </p>
+            )}
           </div>
         </section>
 
@@ -419,33 +501,41 @@ export function SettingsPanel() {
           <SectionLabel hint="성욕이 찬 성숙 개체가 가까이 오면 교배한다. 인구가 Population Limit이면 자식은 태어나지 않는다.">
             진화
           </SectionLabel>
-          <div className="mt-2 space-y-1">
-            <Toggle
-              label="유전 활성화"
-              checked={geneticsEnabled}
-              onChange={setGeneticsEnabled}
-              title="끄면 교배·돌연변이·유전 bias·노화 사망을 멈춘다. 학습만 관찰할 때 쓴다. 시작 전이면 모든 개체가 같은 기본 Genome으로 다시 만들어진다."
-            />
-            <Toggle
-              label="Q-Table 상속"
-              checked={inheritQTable}
-              onChange={setInheritQTable}
-              title="켜면 자식이 더 적합한 부모의 Q-Table 복사본으로 시작한다. 기본은 빈 표다."
-            />
-            <NumberStepper
-              label="Population Limit"
-              value={populationLimit}
-              min={MIN_AGENT_COUNT}
-              max={MAX_AGENT_COUNT}
-              onChange={setPopulationLimit}
-              title="살아있는 개체 수가 이 값 이상이면 교배 후에도 자식이 태어나지 않는다."
-            />
-            <Readout label="돌연변이 확률" value={`${(mutationRate * 100).toFixed(0)}% / gene`} />
-            <p className="pt-1 text-[12px] leading-5 text-lab-muted">
-              유전이 꺼져 있으면 교배와 노화 사망이 없고, 모든 새 개체는 같은 기본 Genome을 쓴다.
-              켜면 성욕이 찬 성숙 개체가 가까이 올 때 교배한다. Q-Table 상속은 기본 꺼짐이다.
+          {isLab ? (
+            <p className="mt-2 text-[12px] leading-5 text-lab-muted">
+              Unavailable in Human Behavior Lab. Genetics, mating, reproduction, lifespan death, and
+              genetic action bias stay off so a single agent can be observed without population
+              dynamics.
             </p>
-          </div>
+          ) : (
+            <div className="mt-2 space-y-1">
+              <Toggle
+                label="유전 활성화"
+                checked={geneticsEnabled}
+                onChange={setGeneticsEnabled}
+                title="끄면 교배·돌연변이·유전 bias·노화 사망을 멈춘다. 학습만 관찰할 때 쓴다. 시작 전이면 모든 개체가 같은 기본 Genome으로 다시 만들어진다."
+              />
+              <Toggle
+                label="Q-Table 상속"
+                checked={inheritQTable}
+                onChange={setInheritQTable}
+                title="켜면 자식이 더 적합한 부모의 Q-Table 복사본으로 시작한다. 기본은 빈 표다."
+              />
+              <NumberStepper
+                label="Population Limit"
+                value={populationLimit}
+                min={MIN_AGENT_COUNT}
+                max={MAX_AGENT_COUNT}
+                onChange={setPopulationLimit}
+                title="살아있는 개체 수가 이 값 이상이면 교배 후에도 자식이 태어나지 않는다."
+              />
+              <Readout label="돌연변이 확률" value={`${(mutationRate * 100).toFixed(0)}% / gene`} />
+              <p className="pt-1 text-[12px] leading-5 text-lab-muted">
+                유전이 꺼져 있으면 교배와 노화 사망이 없고, 모든 새 개체는 같은 기본 Genome을 쓴다.
+                켜면 성욕이 찬 성숙 개체가 가까이 올 때 교배한다. Q-Table 상속은 기본 꺼짐이다.
+              </p>
+            </div>
+          )}
         </section>
 
         <section>

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lab:probe": "vitest run src/learning/labProbe.test.ts --reporter=verbose",
     "lint": "oxlint",
     "preview": "vite preview"
   },

@@ -163,6 +163,7 @@ export function classifyActionOutcome(input: {
   died: boolean
   pickedUp?: boolean
   gathered?: boolean
+  interacted?: boolean
   attackHit?: boolean
   attackAttempted?: boolean
   fledFarther?: boolean
@@ -171,7 +172,7 @@ export function classifyActionOutcome(input: {
   if (input.collided) return 'blocked'
   if (input.action === 'EAT') return input.ate ? 'success' : 'no-target'
   if (input.action === 'PICK_UP') return input.pickedUp ? 'success' : 'no-target'
-  if (input.action === 'GATHER') return input.gathered ? 'success' : 'no-target'
+  if (input.action === 'GATHER') return input.gathered || input.interacted ? 'success' : 'no-target'
   if (input.action === 'ATTACK') {
     if (input.attackHit) return 'success'
     return input.attackAttempted ? 'failed' : 'no-target'

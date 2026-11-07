@@ -12,6 +12,8 @@ import {
   AGENT_TURN_RATE_RANGE,
   AGENT_WANDER_INTERVAL_RANGE,
 } from './constants'
+import { LAB_ARENA } from './interactables'
+import { ensureLabDrives, isHumanBehaviorLab } from './labMode'
 import { findOpenPosition, isBlockedSpawn, isInsideWorld } from './spatial'
 
 export interface CreateAgentOptions {
@@ -45,14 +47,21 @@ function pickSpawnPosition(
     isTooCloseToAgents(existing, px, pz)
 
   if (near) {
+    // Lab vestibule: stay in the center so all three chambers are reachable.
+    const lab = isHumanBehaviorLab(world.config.mode)
+    const minDist = lab ? 0 : 0.8
+    const maxDist = lab ? 0.45 : 2.4
     for (let attempt = 0; attempt < 24; attempt += 1) {
       const angle = rng() * Math.PI * 2
-      const distance = randomInRange(rng, 0.8, 2.4)
+      const distance = lab && attempt === 0 ? 0 : randomInRange(rng, minDist, maxDist)
       const x = near.x + Math.sin(angle) * distance
       const z = near.z + Math.cos(angle) * distance
       if (isInsideWorld(x, z, world.config.size) && !isBlocked(x, z)) {
         return { x, z }
       }
+    }
+    if (lab && !isBlocked(near.x, near.z)) {
+      return { x: near.x, z: near.z }
     }
   }
 
@@ -78,7 +87,7 @@ export function createAgent(
       ? createDefaultGenome(options.learningDefaults)
       : createRandomGenome(rng, options.learningDefaults))
 
-  return {
+  const agent: Agent = {
     id: createId('agent'),
     position: { x, z },
     rotation: randomInRange(rng, 0, Math.PI * 2),
@@ -115,6 +124,8 @@ export function createAgent(
     combatCue: null,
     actionTarget: null,
   }
+
+  return isHumanBehaviorLab(world.config.mode) ? ensureLabDrives(agent) : agent
 }
 
 export function pruneDeadAgents(agents: Agent[], maxDead: number): {
@@ -143,9 +154,11 @@ export function createInitialAgents(
   geneticsEnabled = true,
 ): Agent[] {
   const agents: Agent[] = []
+  // Lab: spawn at arena midpoint so survival ↔ rest ↔ lookout are all reachable.
+  const near = isHumanBehaviorLab(world.config.mode) ? LAB_ARENA.spawn : undefined
 
   for (let i = 0; i < count; i += 1) {
-    agents.push(createAgent(world, agents, rng, { learningDefaults, geneticsEnabled }))
+    agents.push(createAgent(world, agents, rng, { learningDefaults, geneticsEnabled, near }))
   }
 
   return agents

@@ -29,7 +29,7 @@ import {
   TERRAIN_CELL_SIZE,
 } from '../simulation/constants'
 import { TERRAIN_PRESETS, TERRAIN_TYPES } from '../types/terrain'
-import { RESOURCE_DISTRIBUTIONS } from '../types/world'
+import { LAB_CONDITIONS, RESOURCE_DISTRIBUTIONS, SIMULATION_MODES } from '../types/world'
 import { cellsPerSide } from '../simulation/terrain'
 import { EXPERIMENT_SCHEMA_VERSION, MAX_EXPERIMENT_JSON_BYTES, MAX_EXPERIMENT_NAME_LENGTH } from './constants'
 import type { ExperimentRecord, ValidationIssue, ValidationResult } from './types'
@@ -93,6 +93,26 @@ export function validateWorldConfig(value: unknown, path = 'worldConfig'): Valid
   expectNumber(value.size, `${path}.size`, issues, MIN_WORLD_SIZE, MAX_WORLD_SIZE)
   expectNumber(value.gridDivisions, `${path}.gridDivisions`, issues, 8, 80)
   expectNumber(value.agentCount, `${path}.agentCount`, issues, MIN_AGENT_COUNT, MAX_AGENT_COUNT)
+  if (
+    typeof value.mode !== 'string' ||
+    !(SIMULATION_MODES as readonly string[]).includes(value.mode)
+  ) {
+    issues.push(issue(`${path}.mode`, 'must be ecology or human_behavior_lab'))
+  } else if (value.mode === 'human_behavior_lab' && value.agentCount !== 1) {
+    issues.push(issue(`${path}.agentCount`, 'must be 1 in Human Behavior Lab'))
+  }
+  if (
+    value.labCondition !== undefined &&
+    (typeof value.labCondition !== 'string' ||
+      !(LAB_CONDITIONS as readonly string[]).includes(value.labCondition))
+  ) {
+    issues.push(
+      issue(
+        `${path}.labCondition`,
+        'must be baseline, food_scarce, rest_locked, curiosity_prime, or tradeoff_hard',
+      ),
+    )
+  }
   expectNumber(value.initialFoodCount, `${path}.initialFoodCount`, issues, MIN_FOOD_COUNT, MAX_FOOD_COUNT)
   expectNumber(value.foodRegenRate, `${path}.foodRegenRate`, issues, MIN_FOOD_REGEN_RATE, MAX_FOOD_REGEN_RATE)
   expectNumber(value.initialBerryCount, `${path}.initialBerryCount`, issues, MIN_BERRY_COUNT, MAX_BERRY_COUNT)
@@ -156,6 +176,13 @@ export function validateRewardConfig(value: unknown, path = 'rewardConfig'): Val
   expectNumber(value.efficientRest, `${path}.efficientRest`, issues, REWARD_CONFIG_RANGES.efficientRest.min, REWARD_CONFIG_RANGES.efficientRest.max)
   expectNumber(value.gatherUnit, `${path}.gatherUnit`, issues, REWARD_CONFIG_RANGES.gatherUnit.min, REWARD_CONFIG_RANGES.gatherUnit.max)
   expectNumber(value.pickupSuccess, `${path}.pickupSuccess`, issues, REWARD_CONFIG_RANGES.pickupSuccess.min, REWARD_CONFIG_RANGES.pickupSuccess.max)
+  expectNumber(
+    value.interactSuccess,
+    `${path}.interactSuccess`,
+    issues,
+    REWARD_CONFIG_RANGES.interactSuccess.min,
+    REWARD_CONFIG_RANGES.interactSuccess.max,
+  )
   expectNumber(value.attackHitUnit, `${path}.attackHitUnit`, issues, REWARD_CONFIG_RANGES.attackHitUnit.min, REWARD_CONFIG_RANGES.attackHitUnit.max)
   expectNumber(value.attackMiss, `${path}.attackMiss`, issues, REWARD_CONFIG_RANGES.attackMiss.min, REWARD_CONFIG_RANGES.attackMiss.max)
   expectNumber(value.damageTakenUnit, `${path}.damageTakenUnit`, issues, REWARD_CONFIG_RANGES.damageTakenUnit.min, REWARD_CONFIG_RANGES.damageTakenUnit.max)
@@ -232,6 +259,48 @@ function validateForageNode(value: unknown, path: string, issues: ValidationIssu
   }
   expectNumber(value.quantity, `${path}.quantity`, issues, 0, 32)
   expectNumber(value.maxQuantity, `${path}.maxQuantity`, issues, 1, 32)
+}
+
+function validateInteractable(value: unknown, path: string, issues: ValidationIssue[]): void {
+  if (!isRecord(value)) {
+    issues.push(issue(path, 'must be an object'))
+    return
+  }
+  expectString(value.id, `${path}.id`, issues)
+  if (
+    value.kind !== 'door' &&
+    value.kind !== 'switch' &&
+    value.kind !== 'movable_box' &&
+    value.kind !== 'rest_bed' &&
+    value.kind !== 'lookout'
+  ) {
+    issues.push(issue(`${path}.kind`, 'must be door, switch, movable_box, rest_bed, or lookout'))
+  }
+  if (
+    !isRecord(value.position) ||
+    !isFiniteNumber(value.position.x) ||
+    !isFiniteNumber(value.position.y) ||
+    !isFiniteNumber(value.position.z)
+  ) {
+    issues.push(issue(`${path}.position`, 'must include finite x, y, z'))
+  }
+  expectNumber(value.rotation, `${path}.rotation`, issues)
+  expectNumber(value.scale, `${path}.scale`, issues, 0.1, 8)
+  if (value.kind === 'door' && typeof value.open !== 'boolean') {
+    issues.push(issue(`${path}.open`, 'must be a boolean'))
+  }
+  if (value.kind === 'switch') {
+    if (typeof value.on !== 'boolean') {
+      issues.push(issue(`${path}.on`, 'must be a boolean'))
+    }
+    expectString(value.controlsId, `${path}.controlsId`, issues)
+  }
+  if (value.kind === 'rest_bed' && typeof value.used !== 'boolean') {
+    issues.push(issue(`${path}.used`, 'must be a boolean'))
+  }
+  if (value.kind === 'lookout' && typeof value.used !== 'boolean') {
+    issues.push(issue(`${path}.used`, 'must be a boolean'))
+  }
 }
 
 function validateWorldTool(value: unknown, path: string, issues: ValidationIssue[]): void {
@@ -334,6 +403,16 @@ function validateWorld(value: unknown, path: string, issues: ValidationIssue[]):
       issues.push(issue(`${path}.worldTools`, 'contains too many tools'))
     }
     value.worldTools.forEach((tool, index) => validateWorldTool(tool, `${path}.worldTools[${index}]`, issues))
+  }
+  if (value.interactables !== undefined) {
+    if (expectArray(value.interactables, `${path}.interactables`, issues)) {
+      if (value.interactables.length > 40) {
+        issues.push(issue(`${path}.interactables`, 'contains too many interactables'))
+      }
+      value.interactables.forEach((item, index) =>
+        validateInteractable(item, `${path}.interactables[${index}]`, issues),
+      )
+    }
   }
   if (expectArray(value.agents, `${path}.agents`, issues)) {
     if (value.agents.length > MAX_AGENT_COUNT + MAX_DEAD_AGENTS) {

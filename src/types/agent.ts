@@ -53,12 +53,24 @@ export interface Agent {
   lastCombatTick: number
   combatCue: CombatCue | null
   actionTarget: ActionTarget | null
+  /**
+   * Lab-only human drives (STEP 19). Absent in Ecology so ecology schema stays untouched.
+   * 0–100; fatigue/curiosity rise unmet; comfort decays without rest.
+   */
+  fatigue?: number
+  curiosity?: number
+  comfort?: number
 }
+
+/** Lab survival vs drive mark for watchable trails (null = ordinary motion). */
+export type TrailChoiceKind = 'drive' | 'survival'
 
 export interface AgentTrailPoint {
   x: number
   z: number
   action: AgentAction | null
+  /** Set when this sample coincides with Eat or rest_bed/lookout GATHER. */
+  choice?: TrailChoiceKind | null
 }
 
 export type AgentTrail = AgentTrailPoint[]

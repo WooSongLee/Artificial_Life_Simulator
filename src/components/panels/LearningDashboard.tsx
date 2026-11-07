@@ -1,18 +1,37 @@
+import { useState } from 'react'
+import { describePolicyMode, policyModeFor } from '../../experiments/conditions'
 import { ACTION_LABELS } from '../../learning/constants'
-import { totalActionCounts } from '../../learning/actionEvents'
+import { getRecentActionEvents, totalActionCounts } from '../../learning/actionEvents'
 import { AGENT_ACTIONS } from '../../learning/types'
 import { TERRAIN_TYPES } from '../../types/terrain'
 import { TERRAIN_LABELS } from '../../simulation/constants'
 import { shortAgentId } from '../../utils/format'
 import { useLearningHistory } from '../../hooks/useLearningHistory'
 import { useLearningStats } from '../../hooks/useLearningStats'
+import { useThrottledStore } from '../../hooks/useThrottledStore'
 import { useWorldStats } from '../../hooks/useWorldStats'
+import {
+  LAB_CURRICULUM_SURVIVAL_END,
+  labCurriculumPhaseFromProgress,
+} from '../../learning/labCurriculum'
 import {
   LEARNING_COMPARISON_WINDOW,
   LEARNING_HISTORY_MAX_POINTS,
   LEARNING_HISTORY_SAMPLE_TICKS,
   SIMULATION_STEP_DT,
 } from '../../simulation/constants'
+import {
+  compareLabOnVsFrozen,
+  createEmptyOutcomeStats,
+  driveVsSurvivalEarlyLate,
+  driveVsSurvivalPickRates,
+  driveVsSurvivalTrajectory,
+  interactSuccessRate,
+  labChoiceCountsFrom,
+  labChoiceDriveSurvivalRates,
+  labChoiceInteractRate,
+  type LabChoiceCounts,
+} from '../../simulation/outcomes'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import type { LearningHistoryPoint } from '../../types/simulation'
 import { formatSigned } from '../../utils/format'
@@ -168,6 +187,10 @@ export function LearningDashboard() {
         <AgentActionTable agents={learning.agentActionCounts} />
         <TerrainActionTable series={history.series} />
         <ToolSuccessTable series={history.series} />
+        <InteractOutcomeTable />
+        <DriveVsSurvivalPickTable />
+        <LabOnVsFrozenComparePanel />
+        <DriveVsSurvivalTrajectoryTimeline />
         <CombatActionTable series={history.series} />
       </section>
 
@@ -602,6 +625,327 @@ function ToolSuccessTable({ series }: { series: LearningHistoryPoint[] }) {
           <p>
             No tool · {empty.success}/{empty.attempts} · {empty.attempts === 0 ? '—' : `${((empty.success / empty.attempts) * 100).toFixed(0)}%`}
           </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InteractOutcomeTable() {
+  const outcomeStats = useSimulationStore((state) => state.world.outcomeStats)
+  const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const mode = useSimulationStore((state) => state.world.config.mode)
+  const attempts = outcomeStats?.interactAttempts ?? 0
+  const successes = outcomeStats?.interactSuccesses ?? 0
+  const rate = outcomeStats ? interactSuccessRate(outcomeStats) : null
+
+  return (
+    <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3">
+      <h3 className="text-[11px] tracking-wide text-lab-muted uppercase">Interact outcomes</h3>
+      <p className="mt-1 text-[12px] leading-5 text-lab-muted">
+        Switch toggle / box push counts from this world run. Compare Learning On vs Off (Frozen Q) or
+        Random-heavy early epsilon via Experiments with the same seed.
+      </p>
+      {attempts === 0 ? (
+        <p className="mt-2 text-[12px] text-lab-muted">
+          {mode === 'human_behavior_lab'
+            ? 'No interact attempts yet. Approach a switch or face a box and GATHER.'
+            : 'No interact attempts in this mode.'}
+        </p>
+      ) : (
+        <div className="mt-2 space-y-1 font-mono text-[12px]">
+          <p>
+            Interact · {successes}/{attempts} ·{' '}
+            {rate === null ? '—' : `${(rate * 100).toFixed(0)}%`}
+          </p>
+          <p className="text-lab-muted">
+            Learning {learningEnabled ? 'On' : 'Off (Frozen Q)'} · reward uses Interact Success
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DriveVsSurvivalPickTable() {
+  const outcomeStats = useSimulationStore((state) => state.world.outcomeStats)
+  const mode = useSimulationStore((state) => state.world.config.mode)
+  const rates = outcomeStats ? driveVsSurvivalPickRates(outcomeStats) : null
+
+  return (
+    <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3">
+      <h3 className="text-[11px] tracking-wide text-lab-muted uppercase">Drive vs survival picks</h3>
+      <p className="mt-1 text-[12px] leading-5 text-lab-muted">
+        Lab rest-cot / observation-booth successes vs EAT (survival chamber). Rates are among those two buckets only — not
+        emotion meters.
+      </p>
+      {!rates ? (
+        <p className="mt-2 text-[12px] text-lab-muted">
+          {mode === 'human_behavior_lab'
+            ? 'No drive or EAT picks yet. Use rest cot / observation booth or eat in the survival chamber.'
+            : 'No drive/survival pick samples in this mode.'}
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          <DistributionRow label="Drive (cot/booth)" count={rates.drivePicks} total={rates.drivePicks + rates.survivalPicks} />
+          <DistributionRow label="Survival (EAT)" count={rates.survivalPicks} total={rates.drivePicks + rates.survivalPicks} />
+          <p className="font-mono text-[11px] text-lab-muted">
+            drive {(rates.driveRate * 100).toFixed(0)}% · survival {(rates.survivalRate * 100).toFixed(0)}% · n{' '}
+            {rates.drivePicks + rates.survivalPicks}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LabOnVsFrozenComparePanel() {
+  const mode = useSimulationStore((state) => state.world.config.mode)
+  const learningEnabled = useSimulationStore((state) => state.learningEnabled)
+  const outcomeStats = useSimulationStore((state) => state.world.outcomeStats)
+  const learning = useLearningStats()
+  const [learningCapture, setLearningCapture] = useState<LabChoiceCounts | null>(null)
+  const [frozenCapture, setFrozenCapture] = useState<LabChoiceCounts | null>(null)
+
+  const policy = policyModeFor({
+    learningEnabled,
+    visitedStates: learning.visitedStates,
+  })
+  const current = labChoiceCountsFrom(outcomeStats ?? createEmptyOutcomeStats())
+  const compare = compareLabOnVsFrozen(learningCapture, frozenCapture)
+  const currentRates = labChoiceDriveSurvivalRates(current)
+  const currentInteract = labChoiceInteractRate(current)
+
+  if (mode !== 'human_behavior_lab') {
+    return (
+      <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3">
+        <h3 className="text-[11px] tracking-wide text-lab-muted uppercase">
+          Learning On vs Frozen Q · Lab choices
+        </h3>
+        <p className="mt-2 text-[12px] text-lab-muted">
+          Lab-only compare. Switch to Human Behavior Lab to pin drive/interact choices.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3">
+      <h3 className="text-[11px] tracking-wide text-lab-muted uppercase">
+        Learning On vs Frozen Q · Lab choices
+      </h3>
+      <p className="mt-1 text-[12px] leading-5 text-lab-muted">
+        Capture drive/survival + interact rates under Learning On, then again under Learning Off ·
+        Frozen Q (visited Q states &gt; 0). Same seed via Experiments — not emotion meters.
+      </p>
+      <p className="mt-2 font-mono text-[11px] text-lab-muted">
+        Now · {describePolicyMode(policy)}
+        {currentRates
+          ? ` · drive ${(currentRates.driveRate * 100).toFixed(0)}% / survival ${(currentRates.survivalRate * 100).toFixed(0)}% · n ${currentRates.drivePicks + currentRates.survivalPicks}`
+          : ' · no drive/Eat picks yet'}
+        {currentInteract !== null
+          ? ` · interact ${(currentInteract * 100).toFixed(0)}%`
+          : ''}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={policy !== 'learning'}
+          onClick={() => setLearningCapture(current)}
+          className="border border-lab-border bg-lab-bg px-2 py-1 text-[12px] text-lab-text disabled:opacity-40"
+        >
+          Capture Learning On
+        </button>
+        <button
+          type="button"
+          disabled={policy !== 'frozen-q'}
+          onClick={() => setFrozenCapture(current)}
+          className="border border-lab-border bg-lab-bg px-2 py-1 text-[12px] text-lab-text disabled:opacity-40"
+        >
+          Capture Frozen Q
+        </button>
+        <button
+          type="button"
+          disabled={!learningCapture && !frozenCapture}
+          onClick={() => {
+            setLearningCapture(null)
+            setFrozenCapture(null)
+          }}
+          className="border border-lab-border bg-lab-bg px-2 py-1 text-[12px] text-lab-muted disabled:opacity-40"
+        >
+          Clear
+        </button>
+      </div>
+      {!compare ? (
+        <p className="mt-2 text-[12px] text-lab-muted">
+          Run Lab choices, capture Learning On, toggle Learning Off with a trained Q-table, capture
+          Frozen Q.
+        </p>
+      ) : (
+        <div className="mt-2 overflow-hidden border border-lab-border text-[12px]">
+          <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr_0.7fr] gap-1 border-b border-lab-border px-2 py-1.5 text-[11px] text-lab-muted">
+            <span>Metric</span>
+            <span className="text-right">Learning On</span>
+            <span className="text-right">Frozen Q</span>
+            <span className="text-right">Δ</span>
+          </div>
+          <CompareMetricRow
+            label="Drive rate"
+            left={compare.learningRates ? compare.learningRates.driveRate : null}
+            right={compare.frozenRates ? compare.frozenRates.driveRate : null}
+            delta={compare.driveRateDelta}
+            asPercent
+          />
+          <CompareMetricRow
+            label="Survival rate"
+            left={compare.learningRates ? compare.learningRates.survivalRate : null}
+            right={compare.frozenRates ? compare.frozenRates.survivalRate : null}
+            delta={compare.survivalRateDelta}
+            asPercent
+          />
+          <CompareMetricRow
+            label="Interact success"
+            left={compare.learningInteractRate}
+            right={compare.frozenInteractRate}
+            delta={compare.interactRateDelta}
+            asPercent
+          />
+          <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr_0.7fr] gap-1 px-2 py-1.5 font-mono text-[11px] text-lab-muted">
+            <span>n drive+Eat</span>
+            <span className="text-right">
+              {learningCapture
+                ? learningCapture.drivePicks + learningCapture.survivalPicks
+                : '—'}
+            </span>
+            <span className="text-right">
+              {frozenCapture ? frozenCapture.drivePicks + frozenCapture.survivalPicks : '—'}
+            </span>
+            <span className="text-right">—</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CompareMetricRow({
+  label,
+  left,
+  right,
+  delta,
+  asPercent,
+}: {
+  label: string
+  left: number | null
+  right: number | null
+  delta: number | null
+  asPercent?: boolean
+}) {
+  const fmt = (value: number | null) => {
+    if (value === null) return '—'
+    return asPercent ? `${(value * 100).toFixed(0)}%` : value.toFixed(2)
+  }
+  return (
+    <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr_0.7fr] gap-1 border-b border-lab-border px-2 py-1.5 font-mono">
+      <span className="text-lab-text">{label}</span>
+      <span className="text-right">{fmt(left)}</span>
+      <span className="text-right">{fmt(right)}</span>
+      <span className="text-right text-lab-muted">
+        {delta === null ? '—' : asPercent ? formatSigned(delta * 100, 0) + 'pp' : formatSigned(delta)}
+      </span>
+    </div>
+  )
+}
+
+function DriveVsSurvivalTrajectoryTimeline() {
+  const mode = useSimulationStore((state) => state.world.config.mode)
+  const tick = useSimulationStore((state) => state.tick)
+  const events = useThrottledStore(() => getRecentActionEvents(), 200)
+  const points = driveVsSurvivalTrajectory(events).slice(0, 40)
+  const chronological = [...points].reverse()
+  const splitTime = LAB_CURRICULUM_SURVIVAL_END * SIMULATION_STEP_DT
+  const earlyLate = driveVsSurvivalEarlyLate(points, splitTime)
+  const phase =
+    mode === 'human_behavior_lab' ? labCurriculumPhaseFromProgress(tick) : null
+
+  return (
+    <div className="mt-3 border border-lab-border bg-lab-elevated px-3 py-3">
+      <h3 className="text-[11px] tracking-wide text-lab-muted uppercase">
+        Survival vs non-survival trajectory
+      </h3>
+      <p className="mt-1 text-[12px] leading-5 text-lab-muted">
+        Real action events: Eat (survival chamber) vs cot/booth (drive chambers). Lab world trail paints the
+        same warm/cool marks — not emotion meters.
+      </p>
+      {phase ? (
+        <p className="mt-2 font-mono text-[11px] text-lab-muted">
+          Curriculum · {phase.replace(/_/g, ' ')} · tick {tick} · split @{' '}
+          {formatSimulationTime(splitTime)}
+        </p>
+      ) : null}
+      {points.length === 0 ? (
+        <p className="mt-2 text-[12px] text-lab-muted">
+          {mode === 'human_behavior_lab'
+            ? 'No Eat/cot/booth events yet. Run Lab with Learning On and watch chamber trails.'
+            : 'No drive/survival trajectory samples in this mode.'}
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {earlyLate ? (
+            <div className="grid gap-2 border border-lab-border bg-lab-bg px-2 py-2 font-mono text-[11px] sm:grid-cols-2">
+              <p>
+                Early ≤{formatSimulationTime(splitTime)} · drive{' '}
+                {earlyLate.early.driveRate === null
+                  ? '—'
+                  : `${(earlyLate.early.driveRate * 100).toFixed(0)}%`}{' '}
+                / surv{' '}
+                {earlyLate.early.survivalRate === null
+                  ? '—'
+                  : `${(earlyLate.early.survivalRate * 100).toFixed(0)}%`}{' '}
+                · n {earlyLate.early.drivePicks + earlyLate.early.survivalPicks}
+              </p>
+              <p>
+                Late &gt;{formatSimulationTime(splitTime)} · drive{' '}
+                {earlyLate.late.driveRate === null
+                  ? '—'
+                  : `${(earlyLate.late.driveRate * 100).toFixed(0)}%`}{' '}
+                / surv{' '}
+                {earlyLate.late.survivalRate === null
+                  ? '—'
+                  : `${(earlyLate.late.survivalRate * 100).toFixed(0)}%`}{' '}
+                · n {earlyLate.late.drivePicks + earlyLate.late.survivalPicks}
+                {earlyLate.driveShareShift ? ' · shift↑drive' : ''}
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-1" aria-label="Chronological survival vs drive marks">
+            {chronological.map((point) => (
+              <span
+                key={point.eventId}
+                title={`${point.label} @ ${formatSimulationTime(point.simulationTime)}`}
+                className={`inline-block h-3 w-3 ${
+                  point.kind === 'survival' ? 'bg-lab-warn' : 'bg-lab-info'
+                }`}
+              />
+            ))}
+          </div>
+          <p className="font-mono text-[11px] text-lab-muted">
+            <span className="mr-2 inline-block h-2 w-2 bg-lab-warn align-middle" />
+            survival (Eat)
+            <span className="ml-3 mr-2 inline-block h-2 w-2 bg-lab-info align-middle" />
+            drive (bed/lookout) · n {points.length}
+          </p>
+          <div className="max-h-40 space-y-1 overflow-y-auto font-mono text-[12px]">
+            {points.slice(0, 16).map((point) => (
+              <p key={point.eventId} className="flex items-center justify-between gap-2">
+                <span className={point.kind === 'survival' ? 'text-lab-warn' : 'text-lab-info'}>
+                  {point.kind === 'survival' ? 'S' : 'D'} · {point.label}
+                  {point.outcome ? ` · ${point.outcome}` : ''}
+                </span>
+                <span className="text-lab-muted">{formatSimulationTime(point.simulationTime)}</span>
+              </p>
+            ))}
+          </div>
         </div>
       )}
     </div>

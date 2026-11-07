@@ -17,6 +17,7 @@ export const DEFAULT_REWARD_CONFIG: RewardConfig = {
   efficientRest: 0.4,
   gatherUnit: 2.5,
   pickupSuccess: 1,
+  interactSuccess: 1.5,
   attackHitUnit: 0.3,
   attackMiss: -0.4,
   damageTakenUnit: -0.3,
@@ -40,6 +41,7 @@ export const REWARD_CONFIG_RANGES = {
   efficientRest: { min: 0, max: 5 },
   gatherUnit: { min: 0, max: 10 },
   pickupSuccess: { min: 0, max: 10 },
+  interactSuccess: { min: 0, max: 10 },
   attackHitUnit: { min: 0, max: 2 },
   attackMiss: { min: -5, max: 0 },
   damageTakenUnit: { min: -2, max: 0 },
@@ -114,6 +116,11 @@ export function clampRewardConfig(config: RewardConfig): RewardConfig {
       Number.isFinite(config.pickupSuccess) ? config.pickupSuccess : DEFAULT_REWARD_CONFIG.pickupSuccess,
       REWARD_CONFIG_RANGES.pickupSuccess.min,
       REWARD_CONFIG_RANGES.pickupSuccess.max,
+    ),
+    interactSuccess: clamp(
+      Number.isFinite(config.interactSuccess) ? config.interactSuccess : DEFAULT_REWARD_CONFIG.interactSuccess,
+      REWARD_CONFIG_RANGES.interactSuccess.min,
+      REWARD_CONFIG_RANGES.interactSuccess.max,
     ),
     attackHitUnit: clamp(
       Number.isFinite(config.attackHitUnit) ? config.attackHitUnit : DEFAULT_REWARD_CONFIG.attackHitUnit,
@@ -213,6 +220,8 @@ export const HELD_TOOL_COUNT = 9
 export const AGENT_DIRECTION_COUNT = 5
 export const AGENT_DISTANCE_COUNT = 4
 export const HEALTH_BAND_COUNT = 3
+export const INTERACTABLE_CUE_COUNT = 16
+export const DRIVE_CUE_COUNT = 5
 export const STATE_SPACE_SIZE =
   3 * 3 * 5 * 4 * 2 * OBSERVATION_TERRAIN_COUNT * OBSERVATION_TERRAIN_COUNT *
   FORAGE_CUE_COUNT *
@@ -220,4 +229,6 @@ export const STATE_SPACE_SIZE =
   HELD_TOOL_COUNT *
   AGENT_DIRECTION_COUNT *
   AGENT_DISTANCE_COUNT *
-  HEALTH_BAND_COUNT
+  HEALTH_BAND_COUNT *
+  INTERACTABLE_CUE_COUNT *
+  DRIVE_CUE_COUNT

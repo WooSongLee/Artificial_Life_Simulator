@@ -9,6 +9,7 @@ import {
   TERRAIN_LABELS,
 } from '../../simulation/constants'
 import { TERRAIN_TYPES } from '../../types/terrain'
+import { isHumanBehaviorLab } from '../../simulation/labMode'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { WorldInspectionPanel } from './WorldInspectionPanel'
 import { WorldScene } from './WorldScene'
@@ -16,9 +17,10 @@ import { WorldScene } from './WorldScene'
 export function WorldViewer() {
   const selectObject = useSimulationStore((state) => state.selectObject)
   const showActionMarkers = useSimulationStore((state) => state.settings.showActionMarkers)
+  const lab = useSimulationStore((state) => isHumanBehaviorLab(state.world.config.mode))
 
   return (
-    <div className="relative h-full w-full bg-[#152018]">
+    <div className={`relative h-full w-full ${lab ? 'bg-[#12151c]' : 'bg-[#152018]'}`}>
       <Canvas
         shadows="percentage"
         camera={{
@@ -54,6 +56,7 @@ export function WorldViewer() {
         </div>
       ) : null}
 
+      {lab ? null : (
       <div className="pointer-events-none absolute bottom-12 left-3 flex flex-wrap gap-1.5 rounded border border-lab-border bg-lab-panel/90 px-2 py-1.5">
         {TERRAIN_TYPES.map((type) => (
           <span key={type} className="flex items-center gap-1 font-mono text-[10px] text-lab-text">
@@ -74,6 +77,7 @@ export function WorldViewer() {
           Tool
         </span>
       </div>
+      )}
 
       <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-lab-border bg-lab-panel px-2.5 py-1 text-[11px] tracking-wide text-lab-muted">
         드래그: 회전 · 휠: 확대/축소 · 선택 시 추적

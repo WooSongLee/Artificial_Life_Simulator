@@ -32,6 +32,7 @@ import {
   SIMULATION_STEP_DT,
 } from '../simulation/constants'
 import { stepSimulation } from '../simulation/engine'
+import { clampSimulationMode, isHumanBehaviorLab } from '../simulation/labMode'
 import { sanitizeWorld } from '../simulation/sanitize'
 import { createLearningHistory, recordLearningHistory } from '../simulation/metrics'
 import { adjustWorldPopulation, createInitialWorld, createWorldObject } from '../simulation/worldFactory'
@@ -49,11 +50,46 @@ const initialWorld = createInitialWorld(undefined, {
 })
 resetBrains(initialWorld.agents, DEFAULT_LEARNING_CONFIG)
 
+/** Last Ecology agentCount before entering Lab, restored on Ecology↔Lab UI round-trip. */
+let ecologyAgentCountResume = initialWorld.config.agentCount
+
 function learningDefaultsFrom(config: LearningConfig) {
   return {
     learningRate: config.learningRate,
     explorationRate: config.initialEpsilon,
   }
+}
+
+function rememberEcologyAgentCount(config: WorldConfig, agentCount: number): void {
+  if (!isHumanBehaviorLab(config.mode)) {
+    ecologyAgentCountResume = agentCount
+  }
+}
+
+function withModeRoundTripAgentCount(
+  current: WorldConfig,
+  partial: Partial<WorldConfig>,
+): Partial<WorldConfig> {
+  const nextMode = clampSimulationMode(partial.mode ?? current.mode)
+
+  if (partial.mode !== undefined) {
+    const enteringLab = isHumanBehaviorLab(partial.mode) && !isHumanBehaviorLab(current.mode)
+    if (enteringLab) {
+      ecologyAgentCountResume = current.agentCount
+      return partial
+    }
+
+    const leavingLab = !isHumanBehaviorLab(partial.mode) && isHumanBehaviorLab(current.mode)
+    if (leavingLab && partial.agentCount === undefined) {
+      return { ...partial, agentCount: ecologyAgentCountResume }
+    }
+  }
+
+  if (partial.agentCount !== undefined && !isHumanBehaviorLab(nextMode)) {
+    rememberEcologyAgentCount({ ...current, mode: nextMode }, clampAgentCount(partial.agentCount))
+  }
+
+  return partial
 }
 
 function isSelectionPresent(id: string | null, world: WorldState): boolean {
@@ -62,7 +98,8 @@ function isSelectionPresent(id: string | null, world: WorldState): boolean {
     world.objects.some((object) => object.id === id) ||
     world.agents.some((agent) => agent.id === id) ||
     world.forageNodes.some((node) => node.id === id) ||
-    world.worldTools.some((tool) => tool.id === id)
+    world.worldTools.some((tool) => tool.id === id) ||
+    (world.interactables ?? []).some((item) => item.id === id)
   )
 }
 
@@ -324,6 +361,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     set((state) => {
       const agentCount = clampAgentCount(count)
       const currentConfig = activeWorldConfig(state)
+      rememberEcologyAgentCount(currentConfig, agentCount)
       if (agentCount === currentConfig.agentCount && state.world.agents.length === agentCount) {
         return state
       }
@@ -378,12 +416,15 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     }),
   setWorldConfig: (partial) =>
     set((state) => {
+      const current = activeWorldConfig(state)
+      const patched = withModeRoundTripAgentCount(current, partial)
       const next = clampWorldConfig({
-        ...activeWorldConfig(state),
-        ...partial,
+        ...current,
+        ...patched,
       })
       const liveChanged =
         next.size !== state.world.config.size ||
+        next.mode !== state.world.config.mode ||
         next.initialFoodCount !== state.world.config.initialFoodCount ||
         next.initialBerryCount !== state.world.config.initialBerryCount ||
         next.initialRootCount !== state.world.config.initialRootCount ||
@@ -550,3 +591,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       cameraResetToken: state.cameraResetToken + 1,
     })),
 }))
+
+/** DEV/smoke: live store singleton for headed browser probes (not a public API). */
+if (import.meta.env.DEV) {
+  ;(globalThis as unknown as { __ALS_STORE__: typeof useSimulationStore }).__ALS_STORE__ =
+    useSimulationStore
+}

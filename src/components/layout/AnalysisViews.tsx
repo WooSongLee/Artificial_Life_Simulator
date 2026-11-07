@@ -5,6 +5,7 @@ import { AgentInspection } from '../panels/AgentInspection'
 import { EcosystemStats } from '../panels/EcosystemStats'
 import { EvolutionDashboard } from '../panels/EvolutionDashboard'
 import { ExperimentsDashboard } from '../panels/ExperimentsDashboard'
+import { InteractableInspection } from '../panels/InteractableInspection'
 import { LearningDashboard } from '../panels/LearningDashboard'
 import { ObjectInspection } from '../panels/ObjectInspection'
 import { EmptyState } from '../ui/EmptyState'
@@ -74,6 +75,13 @@ function InspectionColumn({ agentsOnly = false }: { agentsOnly?: boolean }) {
     150,
     selectedObjectId,
   )
+  const selectedInteractable = useThrottledStore(
+    (state) =>
+      (state.world.interactables ?? []).find((item) => item.id === state.selectedObjectId) ?? null,
+    150,
+    selectedObjectId,
+  )
+  const interactables = useThrottledStore((state) => state.world.interactables ?? [], 150, selectedObjectId)
 
   if (selectedAgent && selectedObjectId) {
     return (
@@ -91,12 +99,20 @@ function InspectionColumn({ agentsOnly = false }: { agentsOnly?: boolean }) {
     )
   }
 
+  if (!agentsOnly && selectedInteractable && selectedObjectId) {
+    return (
+      <aside className="w-full shrink-0 lg:w-80">
+        <InteractableInspection item={selectedInteractable} interactables={interactables} />
+      </aside>
+    )
+  }
+
   return (
     <aside className="w-full shrink-0 lg:w-80">
       <EmptyState title="No selection">
         {agentsOnly
           ? 'World 탭에서 개체를 선택하면 상세 상태를 표시한다.'
-          : 'World 탭에서 개체 또는 오브젝트를 선택하면 상세 상태를 표시한다.'}
+          : 'World 탭에서 개체·오브젝트·interactable을 선택하면 상세 상태를 표시한다.'}
       </EmptyState>
     </aside>
   )

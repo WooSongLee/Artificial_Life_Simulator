@@ -1,4 +1,4 @@
-import { Billboard, Html, Outlines, Text } from '@react-three/drei'
+import { Billboard, Html, Text } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group, MeshBasicMaterial } from 'three'
@@ -6,85 +6,23 @@ import { useShallow } from 'zustand/react/shallow'
 import { isMating } from '../../evolution/reproduction'
 import { ACTION_COLORS, ACTION_LABELS, ACTION_MARKS } from '../../learning/constants'
 import type { AgentAction } from '../../learning/types'
+import {
+  blendAngle,
+  blendPosition,
+  resolveAgentMotionState,
+  stepHeldMotion,
+  type HeldMotionClock,
+  type Vec2,
+} from '../../render/agentMotion'
 import { BasketMesh, DiggingStickMesh, ShieldMesh, SpearMesh } from './ForageAndTools'
+import { HumanoidRig } from './HumanoidRig'
+import { isHumanBehaviorLab } from '../../simulation/labMode'
 import { getEffectiveVision } from '../../simulation/terrain'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { shortAgentId } from '../../utils/format'
 
 interface AgentMeshProps {
   agentId: string
-}
-
-function bodyColor(alive: boolean, energy: 0 | 1 | 2): string {
-  if (!alive) return '#6d7178'
-  if (energy === 2) return '#3d9b7a'
-  if (energy === 1) return '#c9a227'
-  return '#c45c4a'
-}
-
-function AgentFigure({
-  alive,
-  energy,
-  selected,
-}: {
-  alive: boolean
-  energy: 0 | 1 | 2
-  selected: boolean
-}) {
-  const color = bodyColor(alive, energy)
-  const limbColor = alive ? '#2f7a60' : '#5c6168'
-  const headColor = alive ? '#e2c7a0' : '#8a8d93'
-
-  return (
-    <group>
-      <mesh position={[0, 0.52, 0]} castShadow>
-        <capsuleGeometry args={[0.18, 0.52, 4, 8]} />
-        <meshStandardMaterial color={color} roughness={0.62} />
-        {selected ? <Outlines thickness={3} color="#5aa0d6" /> : null}
-      </mesh>
-      <mesh position={[0.22, 0.58, 0]} rotation={[0, 0, 0.45]} castShadow>
-        <capsuleGeometry args={[0.055, 0.26, 3, 6]} />
-        <meshStandardMaterial color={limbColor} roughness={0.7} />
-      </mesh>
-      <mesh position={[-0.22, 0.58, 0]} rotation={[0, 0, -0.45]} castShadow>
-        <capsuleGeometry args={[0.055, 0.26, 3, 6]} />
-        <meshStandardMaterial color={limbColor} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 1.02, 0]} castShadow>
-        <sphereGeometry args={[0.16, 10, 10]} />
-        <meshStandardMaterial color={headColor} roughness={0.55} />
-      </mesh>
-      <mesh position={[0, 1.04, 0.13]}>
-        <sphereGeometry args={[0.035, 8, 8]} />
-        <meshStandardMaterial color={alive ? '#1b1d22' : '#4a4d52'} />
-      </mesh>
-      {alive ? <HeadingMarker /> : <DeadMarker />}
-    </group>
-  )
-}
-
-function HeadingMarker() {
-  return (
-    <group raycast={() => null}>
-      <mesh position={[0, 0.08, 0.62]}>
-        <boxGeometry args={[0.07, 0.04, 0.72]} />
-        <meshBasicMaterial color="#e8eef6" />
-      </mesh>
-      <mesh position={[0, 0.1, 1.08]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.11, 0.28, 6]} />
-        <meshBasicMaterial color="#e8eef6" />
-      </mesh>
-    </group>
-  )
-}
-
-function DeadMarker() {
-  return (
-    <mesh position={[0, 1.28, 0]} rotation={[0, 0, Math.PI / 4]} raycast={() => null}>
-      <boxGeometry args={[0.22, 0.035, 0.035]} />
-      <meshBasicMaterial color="#c45c4a" />
-    </mesh>
-  )
 }
 
 function SelectionRing() {
@@ -263,9 +201,13 @@ function energyBand(energy: number): 0 | 1 | 2 {
 export function AgentMesh({ agentId }: AgentMeshProps) {
   const rootRef = useRef<Group>(null)
   const bodyRef = useRef<Group>(null)
+  const yawRef = useRef<number | null>(null)
+  const positionRef = useRef<Vec2 | null>(null)
+  const holdRef = useRef<HeldMotionClock>({ displayed: 'idle', holdLeft: 0 })
   const selectObject = useSimulationStore((state) => state.selectObject)
   const showVisionRange = useSimulationStore((state) => state.settings.showVisionRange)
   const showActionMarkers = useSimulationStore((state) => state.settings.showActionMarkers)
+  const lab = useSimulationStore((state) => isHumanBehaviorLab(state.world.config.mode))
   const visual = useSimulationStore(
     useShallow((state) => {
       const agent = state.world.agents.find((item) => item.id === agentId)
@@ -283,17 +225,41 @@ export function AgentMesh({ agentId }: AgentMeshProps) {
     }),
   )
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const agent = useSimulationStore.getState().world.agents.find((item) => item.id === agentId)
     if (!agent || !rootRef.current) return
-    rootRef.current.position.set(agent.position.x, 0, agent.position.z)
+    const clampedDt = Math.min(0.05, Math.max(0, dt))
+    // Same resolve + hold clock as HumanoidRig so xz follow mode matches limbs.
+    const resolved = resolveAgentMotionState({
+      alive: agent.alive,
+      lastAction: agent.lastAction,
+      speed: agent.speed,
+      fatigue: agent.fatigue,
+      comfort: agent.comfort,
+    })
+    holdRef.current = stepHeldMotion(holdRef.current, resolved, clampedDt)
+    const motion = holdRef.current.displayed
+    // Walk/run: soft xz follow (sim authoritative). Planted: snap (no stop foot-slide).
+    if (positionRef.current === null) {
+      positionRef.current = { x: agent.position.x, z: agent.position.z }
+    } else {
+      positionRef.current = blendPosition(
+        positionRef.current,
+        { x: agent.position.x, z: agent.position.z },
+        clampedDt,
+        motion,
+      )
+    }
+    rootRef.current.position.set(positionRef.current.x, 0, positionRef.current.z)
     if (!bodyRef.current) return
+    if (yawRef.current === null) yawRef.current = agent.rotation
+    yawRef.current = blendAngle(yawRef.current, agent.rotation, clampedDt)
     if (agent.alive) {
       bodyRef.current.position.set(0, 0, 0)
-      bodyRef.current.rotation.set(0, agent.rotation, 0)
+      bodyRef.current.rotation.set(0, yawRef.current, 0)
     } else {
       bodyRef.current.position.set(0, 0.16, 0)
-      bodyRef.current.rotation.set(Math.PI / 2, agent.rotation, 0)
+      bodyRef.current.rotation.set(Math.PI / 2, yawRef.current, 0)
     }
   })
 
@@ -305,7 +271,12 @@ export function AgentMesh({ agentId }: AgentMeshProps) {
   }
 
   return (
-    <group ref={rootRef} onClick={handleClick}>
+    <group
+      ref={rootRef}
+      name={`agent-${agentId}`}
+      userData={{ agentId, kind: 'agent' }}
+      onClick={handleClick}
+    >
       <mesh position={[0, 0.55, 0]} visible={false}>
         <cylinderGeometry args={[0.7, 0.7, 1.4, 10]} />
         <meshBasicMaterial />
@@ -315,8 +286,14 @@ export function AgentMesh({ agentId }: AgentMeshProps) {
         <circleGeometry args={[0.3, 16]} />
         <meshBasicMaterial color="#000000" transparent opacity={visual.alive ? 0.22 : 0.12} />
       </mesh>
-      <group ref={bodyRef}>
-        <AgentFigure alive={visual.alive} energy={visual.energy} selected={visual.selected} />
+      <group ref={bodyRef} name="agent-body">
+        <HumanoidRig
+          agentId={agentId}
+          alive={visual.alive}
+          energy={visual.energy}
+          selected={visual.selected}
+          lab={lab}
+        />
         {visual.alive && visual.equipmentType === 'basket' ? (
           <group position={[-0.22, 0.42, -0.08]} rotation={[0.15, 0.4, 0.2]}>
             <BasketMesh scale={0.72} />

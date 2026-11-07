@@ -45,6 +45,30 @@ export const HELD_TOOLS = [
 export const AGENT_DIRECTIONS = ['none', 'forward', 'back', 'left', 'right'] as const
 export const AGENT_DISTANCES = ['close', 'mid', 'far', 'out'] as const
 export const HEALTH_BANDS = ['low', 'mid', 'high'] as const
+/** Nearest visible interactable: kind + close/forward/other (forage-style). */
+export const INTERACTABLE_CUES = [
+  'none',
+  'switch_close',
+  'switch_fwd',
+  'switch_oth',
+  'door_close',
+  'door_fwd',
+  'door_oth',
+  'box_close',
+  'box_fwd',
+  'box_oth',
+  'rest_close',
+  'rest_fwd',
+  'rest_oth',
+  'look_close',
+  'look_fwd',
+  'look_oth',
+] as const
+/**
+ * Dominant Lab need for Q conditioning (Ecology → na).
+ * surv = hunger/energy urgent; tired/curious = human drive; calm = drives ok.
+ */
+export const DRIVE_CUES = ['na', 'calm', 'tired', 'curious', 'surv'] as const
 
 export type EnergyBand = (typeof ENERGY_BANDS)[number]
 export type HungerBand = (typeof HUNGER_BANDS)[number]
@@ -58,6 +82,8 @@ export type HeldTool = (typeof HELD_TOOLS)[number]
 export type AgentDirection = (typeof AGENT_DIRECTIONS)[number]
 export type AgentDistance = (typeof AGENT_DISTANCES)[number]
 export type HealthBand = (typeof HEALTH_BANDS)[number]
+export type InteractableCue = (typeof INTERACTABLE_CUES)[number]
+export type DriveCue = (typeof DRIVE_CUES)[number]
 
 export interface Observation {
   energy: EnergyBand
@@ -73,6 +99,8 @@ export interface Observation {
   agentDirection: AgentDirection
   agentDistance: AgentDistance
   health: HealthBand
+  interactable: InteractableCue
+  drive: DriveCue
 }
 
 export type StateKey = string
@@ -93,6 +121,8 @@ export interface RewardConfig {
   efficientRest: number
   gatherUnit: number
   pickupSuccess: number
+  /** Reward for a successful interactable use (switch toggle / box push). */
+  interactSuccess: number
   attackHitUnit: number
   attackMiss: number
   damageTakenUnit: number
@@ -110,6 +140,7 @@ export interface RewardContext {
   foodInEatRange: boolean
   gatheredAmount: number
   pickedUp: boolean
+  interacted?: boolean
   damageDealt?: number
   damageTaken?: number
   damageReduced?: number
@@ -127,6 +158,7 @@ export interface ActionOutcome {
   pickedUpToolId: string | null
   gatheredNodeId: string | null
   gatheredAmount: number
+  interactedId?: string | null
   durabilityDelta: number
   targetKind: string | null
   damageDealt?: number

@@ -11,6 +11,8 @@ import {
   WORLD_SEED,
 } from './constants'
 import { createForageContents } from './forage'
+import { createLabInteractables, pickLabFoodPosition } from './interactables'
+import { isHumanBehaviorLab } from './labMode'
 import { createEmptyOutcomeStats } from './outcomes'
 import {
   createClusterCenters,
@@ -100,29 +102,49 @@ export function generateWorld(
   })
   const rng = mulberry32(seed)
   const terrain = generateTerrainGrid(nextConfig)
+  const lab = isHumanBehaviorLab(nextConfig.mode)
   const objects: WorldObject[] = []
   const centers = createClusterMap(rng, nextConfig)
   const obstacles = getObstacleCounts(nextConfig)
 
-  const placements: Array<[WorldObjectType, number]> = [
-    ['tree', obstacles.tree],
-    ['rock', obstacles.rock],
-    ['food', getConfiguredFoodCount(nextConfig)],
-  ]
+  // Lab: no ecology trees/rocks — survival food sits at the teaching table only.
+  const placements: Array<[WorldObjectType, number]> = lab
+    ? [['food', getConfiguredFoodCount(nextConfig)]]
+    : [
+        ['tree', obstacles.tree],
+        ['rock', obstacles.rock],
+        ['food', getConfiguredFoodCount(nextConfig)],
+      ]
 
   for (const [type, count] of placements) {
     for (let i = 0; i < count; i += 1) {
+      if (lab && type === 'food') {
+        const spot = pickLabFoodPosition(objects, i)
+        const [minScale, maxScale] = SCALE_RANGE.food
+        objects.push({
+          id: createId('food'),
+          type: 'food',
+          position: { x: spot.x, y: 0, z: spot.z },
+          scale: randomInRange(rng, minScale, maxScale),
+          rotation: randomInRange(rng, 0, Math.PI * 2),
+        })
+        continue
+      }
       objects.push(createWorldObject(type, nextConfig, objects, rng, centers[type], terrain))
     }
   }
 
-  const forage = createForageContents(nextConfig, objects, terrain, rng)
+  const forage = lab
+    ? { forageNodes: [], worldTools: [] }
+    : createForageContents(nextConfig, objects, terrain, rng)
+  const interactables = createLabInteractables(nextConfig, objects, terrain)
   const worldWithoutAgents: WorldState = {
     config: nextConfig,
     objects,
     agents: [],
     forageNodes: forage.forageNodes,
     worldTools: forage.worldTools,
+    interactables,
     foodSpawnCooldown: 0,
     forageSpawnCooldown: 0,
     generation: 1,
@@ -159,12 +181,25 @@ export function topUpFood(world: WorldState, rng: Rng = Math.random): WorldObjec
   const target = getConfiguredFoodCount(world.config)
   const objects = [...world.objects]
   let foodCount = countFood(objects)
+  const lab = isHumanBehaviorLab(world.config.mode)
   const centers = world.config.resourceDistribution === 'clustered'
     ? createClusterCenters(rng, world.config, 3)
     : undefined
 
   while (foodCount < target) {
-    objects.push(createWorldObject('food', world.config, objects, rng, centers, world.terrain))
+    if (lab) {
+      const spot = pickLabFoodPosition(objects, foodCount)
+      const [minScale, maxScale] = SCALE_RANGE.food
+      objects.push({
+        id: createId('food'),
+        type: 'food',
+        position: { x: spot.x, y: 0, z: spot.z },
+        scale: randomInRange(rng, minScale, maxScale),
+        rotation: randomInRange(rng, 0, Math.PI * 2),
+      })
+    } else {
+      objects.push(createWorldObject('food', world.config, objects, rng, centers, world.terrain))
+    }
     foodCount += 1
   }
 

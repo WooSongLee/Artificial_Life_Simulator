@@ -1,6 +1,8 @@
 import { agentSeparation, attackRangeFor, findNearestLivingAgent } from '../simulation/combat'
 import { AGENT_LOOKAHEAD, AGENT_RADIUS, FOOD_EAT_RADIUS, GATHER_RADIUS } from '../simulation/constants'
 import { durabilityBand, findVisibleForage, findVisibleTool } from '../simulation/forage'
+import { findVisibleInteractable, INTERACT_RADIUS } from '../simulation/interactables'
+import { allowsAgentSensing, clampSimulationMode } from '../simulation/labMode'
 import { isBlockedWorldPosition } from '../simulation/spatial'
 import {
   canDetectAt,
@@ -9,12 +11,14 @@ import {
 } from '../simulation/terrain'
 import type { Agent } from '../types/agent'
 import type { ForageNode, ToolType } from '../types/forage'
+import type { Interactable } from '../types/interactable'
 import type { WorldObject, WorldState } from '../types/world'
 import { distanceSq, shortestAngleDelta } from '../utils/math'
-import { STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX } from './constants'
+import { EFFICIENT_REST_ENERGY, STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX, URGENT_HUNGER } from './constants'
 import {
   AGENT_DIRECTIONS,
   AGENT_DISTANCES,
+  DRIVE_CUES,
   ENERGY_BANDS,
   FOOD_DIRECTIONS,
   FOOD_DISTANCES,
@@ -22,6 +26,7 @@ import {
   HEALTH_BANDS,
   HELD_TOOLS,
   HUNGER_BANDS,
+  INTERACTABLE_CUES,
   NEARBY_TOOLS,
   OBSTACLE_AHEAD_VALUES,
   OBSERVATION_TERRAIN_VALUES,
@@ -29,17 +34,24 @@ import {
 import type {
   AgentDirection,
   AgentDistance,
+  DriveCue,
   EnergyBand,
   FoodDirection,
   FoodDistance,
   ForageCue,
   HeldTool,
+  InteractableCue,
   NearbyTool,
   Observation,
   ObservationTerrain,
   ObstacleAhead,
   StateKey,
 } from './types'
+
+/** Fatigue/comfort unmet above this → tired cue. */
+export const DRIVE_TIRED_THRESHOLD = 55
+/** Curiosity unmet above this → curious cue. */
+export const DRIVE_CURIOUS_THRESHOLD = 55
 
 export function findNearestFood(agent: Agent, world: WorldState): WorldObject | null {
   let nearest: WorldObject | null = null
@@ -75,16 +87,24 @@ export function bandStat(value: number): EnergyBand {
   return 'high'
 }
 
-export function observeFoodDirection(agent: Agent, food: WorldObject | null): FoodDirection {
-  if (!food) return 'none'
-
-  const desired = Math.atan2(food.position.x - agent.position.x, food.position.z - agent.position.z)
+/** Bearing from agent facing to a world point (no "none"). */
+export function observeBearing(
+  agent: Pick<Agent, 'position' | 'rotation'>,
+  x: number,
+  z: number,
+): Exclude<FoodDirection, 'none'> {
+  const desired = Math.atan2(x - agent.position.x, z - agent.position.z)
   const delta = shortestAngleDelta(agent.rotation, desired)
   const abs = Math.abs(delta)
 
   if (abs <= Math.PI / 4) return 'forward'
   if (abs >= (Math.PI * 3) / 4) return 'back'
   return delta > 0 ? 'left' : 'right'
+}
+
+export function observeFoodDirection(agent: Agent, food: WorldObject | null): FoodDirection {
+  if (!food) return 'none'
+  return observeBearing(agent, food.position.x, food.position.z)
 }
 
 export function observeFoodDistance(agent: Agent, food: WorldObject | null, world: WorldState): FoodDistance {
@@ -154,9 +174,42 @@ export function observeNearbyAgentDistance(agent: Agent, other: Agent | null, wo
   return 'out'
 }
 
+export function observeInteractable(agent: Agent, world: WorldState): InteractableCue {
+  const target = findVisibleInteractable(agent, world.interactables ?? [], (x, z, dist) =>
+    canDetectAt(agent, x, z, world, dist),
+  )
+  if (!target) return 'none'
+
+  const dist = Math.hypot(target.position.x - agent.position.x, target.position.z - agent.position.z)
+  const prefix = interactableCuePrefix(target)
+  if (dist <= INTERACT_RADIUS) return `${prefix}_close`
+
+  const heading = observeInteractableHeading(agent, target)
+  return heading === 'forward' ? `${prefix}_fwd` : `${prefix}_oth`
+}
+
+/** Compact dominant-need cue so Q can learn rest/lookout vs survival. */
+export function observeDrive(agent: Agent): DriveCue {
+  if (agent.fatigue === undefined && agent.curiosity === undefined && agent.comfort === undefined) {
+    return 'na'
+  }
+
+  if (agent.hunger >= URGENT_HUNGER || agent.energy <= EFFICIENT_REST_ENERGY) return 'surv'
+
+  const fatigue = agent.fatigue ?? 0
+  const comfortNeed = 100 - (agent.comfort ?? 100)
+  const tiredScore = Math.max(fatigue, comfortNeed)
+  const curiosity = agent.curiosity ?? 0
+
+  if (tiredScore < DRIVE_TIRED_THRESHOLD && curiosity < DRIVE_CURIOUS_THRESHOLD) return 'calm'
+  if (tiredScore >= curiosity) return 'tired'
+  return 'curious'
+}
+
 export function observeAgent(agent: Agent, world: WorldState): Observation {
   const food = findNearestFood(agent, world)
-  const nearby = findNearestLivingAgent(agent, world)
+  const senseAgents = allowsAgentSensing(clampSimulationMode(world.config.mode))
+  const nearby = senseAgents ? findNearestLivingAgent(agent, world) : null
 
   return {
     energy: bandStat(agent.energy),
@@ -172,16 +225,18 @@ export function observeAgent(agent: Agent, world: WorldState): Observation {
     agentDirection: observeNearbyAgentDirection(agent, nearby),
     agentDistance: observeNearbyAgentDistance(agent, nearby, world),
     health: bandStat(agent.health),
+    interactable: observeInteractable(agent, world),
+    drive: observeDrive(agent),
   }
 }
 
 export function encodeObservation(observation: Observation): StateKey {
-  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}|${observation.terrain}|${observation.terrainAhead}|${observation.forage}|${observation.nearbyTool}|${observation.heldTool}|${observation.agentDirection}|${observation.agentDistance}|${observation.health}`
+  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}|${observation.terrain}|${observation.terrainAhead}|${observation.forage}|${observation.nearbyTool}|${observation.heldTool}|${observation.agentDirection}|${observation.agentDistance}|${observation.health}|${observation.interactable}|${observation.drive}`
 }
 
 export function decodeObservation(stateKey: StateKey): Observation | null {
   const tokens = stateKey.split('|')
-  if (tokens.length !== 13) return null
+  if (tokens.length !== 15) return null
   const [
     energy,
     hunger,
@@ -196,6 +251,8 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     agentDirection,
     agentDistance,
     health,
+    interactable,
+    drive,
   ] = tokens
   if (
     !isToken(energy, ENERGY_BANDS) ||
@@ -210,7 +267,9 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     !isToken(heldTool, HELD_TOOLS) ||
     !isToken(agentDirection, AGENT_DIRECTIONS) ||
     !isToken(agentDistance, AGENT_DISTANCES) ||
-    !isToken(health, HEALTH_BANDS)
+    !isToken(health, HEALTH_BANDS) ||
+    !isToken(interactable, INTERACTABLE_CUES) ||
+    !isToken(drive, DRIVE_CUES)
   ) {
     return null
   }
@@ -229,6 +288,8 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     agentDirection,
     agentDistance,
     health,
+    interactable,
+    drive,
   }
 }
 
@@ -247,6 +308,19 @@ function heldToolPrefix(toolType: ToolType): 'basket' | 'stick' | 'spear' | 'shi
 function observeTargetHeading(agent: Agent, target: ForageNode): 'forward' | 'other' {
   const desired = Math.atan2(target.position.x - agent.position.x, target.position.z - agent.position.z)
   return Math.abs(shortestAngleDelta(agent.rotation, desired)) <= Math.PI / 4 ? 'forward' : 'other'
+}
+
+function observeInteractableHeading(agent: Agent, target: Interactable): 'forward' | 'other' {
+  const desired = Math.atan2(target.position.x - agent.position.x, target.position.z - agent.position.z)
+  return Math.abs(shortestAngleDelta(agent.rotation, desired)) <= Math.PI / 4 ? 'forward' : 'other'
+}
+
+function interactableCuePrefix(target: Interactable): 'switch' | 'door' | 'box' | 'rest' | 'look' {
+  if (target.kind === 'switch') return 'switch'
+  if (target.kind === 'door') return 'door'
+  if (target.kind === 'rest_bed') return 'rest'
+  if (target.kind === 'lookout') return 'look'
+  return 'box'
 }
 
 export function lookAheadPoint(agent: Pick<Agent, 'position' | 'rotation'>): { x: number; z: number } {

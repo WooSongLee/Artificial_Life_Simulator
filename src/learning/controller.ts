@@ -4,6 +4,18 @@ import type { Rng } from '../utils/random'
 import { DEFAULT_LEARNING_CONFIG, DEFAULT_REWARD_CONFIG } from './constants'
 import { ensureBrain, recordLearningStep } from './brain'
 import { isLegalAction, legalActionsFor } from './actionMask'
+import { combineActionBias, driveActionBias, exploreWeightsFor, hasLabDrives } from './driveBias'
+import { effectsFromWorldConfig } from '../simulation/labConditions'
+import {
+  curriculumEpsilonDecay,
+  curriculumEpsilonFloor,
+  curriculumSeekBias,
+  isDriveReliefTarget,
+  labLearningCurriculum,
+  scaleCurriculumBias,
+  scaleCurriculumExploreWeights,
+  scaleCurriculumReward,
+} from './labCurriculum'
 import { encodeObservation, observeAgent } from './observation'
 import { geneticActionBias, selectionScoresFrom } from './geneticBias'
 import {
@@ -16,8 +28,14 @@ import {
   selectEpsilonGreedy,
   updateQValue,
 } from './qLearning'
-import { computeReward } from './rewards'
-import type { ActionOutcome, AgentAction, LearningConfig, RewardConfig } from './types'
+import { computeReward, survivalSeekReward } from './rewards'
+import type {
+  ActionOutcome,
+  AgentAction,
+  FoodDirection,
+  LearningConfig,
+  RewardConfig,
+} from './types'
 
 export interface LearningStepContext {
   learningEnabled: boolean
@@ -44,13 +62,32 @@ export function decideAction(agent: Agent, world: WorldState, context: LearningS
   const legalActions = legalActionsFor(agent, world)
   const geneticBias =
     context.geneticsEnabled === false ? createEmptyQValues() : geneticActionBias(agent, world)
-  const selectionScores = selectionScoresFrom(qValues, geneticBias)
+  const rawDriveBias = driveActionBias(agent, world)
+  const rawExplore = exploreWeightsFor(agent, world)
+  // Selection teacher follows world tick so Learning & Frozen share the same curriculum clock.
+  const selectionCurriculum = hasLabDrives(agent)
+    ? labLearningCurriculum(context.tick ?? brain.totalSteps)
+    : null
+  const driveBias = selectionCurriculum
+    ? combineActionBias(
+        scaleCurriculumBias(rawDriveBias, selectionCurriculum),
+        curriculumSeekBias(agent, world, selectionCurriculum),
+      )
+    : rawDriveBias
+  const exploreWeights = selectionCurriculum
+    ? scaleCurriculumExploreWeights(rawExplore, selectionCurriculum)
+    : rawExplore
+  const selectionScores = selectionScoresFrom(qValues, combineActionBias(geneticBias, driveBias))
+  const epsilon = selectionCurriculum
+    ? Math.max(brain.epsilon, curriculumEpsilonFloor(selectionCurriculum))
+    : brain.epsilon
   const selection = selectEpsilonGreedy(
     qValues,
-    brain.epsilon,
+    epsilon,
     context.rng,
     legalActions,
     selectionScores,
+    exploreWeights,
   )
   return {
     observation,
@@ -76,27 +113,69 @@ export function applyLearningUpdate(
   explored: boolean,
   context: LearningStepContext,
   legalActions?: readonly AgentAction[],
+  driveBefore?: { fatigue?: number; curiosity?: number; comfort?: number },
+  seekBefore?: { foodDirection?: FoodDirection; previousAction?: AgentAction | null },
 ): number {
-  const reward = computeReward(
-    {
-      action: outcome.action,
-      ate: outcome.ate,
-      collided: outcome.collided,
-      died: outcome.died,
-      energyBefore,
-      hungerBefore,
-      foodInEatRange,
-      gatheredAmount: outcome.gatheredAmount,
-      pickedUp: outcome.pickedUpToolId !== null,
-      damageDealt: outcome.damageDealt ?? 0,
-      damageTaken: outcome.damageTaken ?? 0,
-      damageReduced: outcome.damageReduced ?? 0,
-      fledFarther: outcome.fledFarther ?? false,
-      attackAttempted: outcome.action === 'ATTACK',
-      attackHit: (outcome.damageDealt ?? 0) > 0,
-    },
-    context.rewardConfig,
-  )
+  const rewardContext = {
+    action: outcome.action,
+    ate: outcome.ate,
+    collided: outcome.collided,
+    died: outcome.died,
+    energyBefore,
+    hungerBefore,
+    foodInEatRange,
+    gatheredAmount: outcome.gatheredAmount,
+    pickedUp: outcome.pickedUpToolId !== null,
+    interacted: outcome.interactedId != null,
+    targetKind: outcome.targetKind,
+    fatigueBefore: driveBefore?.fatigue,
+    curiosityBefore: driveBefore?.curiosity,
+    comfortBefore: driveBefore?.comfort,
+    foodDirection: seekBefore?.foodDirection,
+    previousAction: seekBefore?.previousAction,
+    damageDealt: outcome.damageDealt ?? 0,
+    damageTaken: outcome.damageTaken ?? 0,
+    damageReduced: outcome.damageReduced ?? 0,
+    fledFarther: outcome.fledFarther ?? false,
+    attackAttempted: outcome.action === 'ATTACK',
+    attackHit: (outcome.damageDealt ?? 0) > 0,
+  }
+  const combined = computeReward(rewardContext, context.rewardConfig)
+  const seek = survivalSeekReward(rewardContext)
+  let reward = combined
+
+  const lab = hasLabDrives(agent)
+  const curriculum = lab ? labLearningCurriculum(
+    // Peek steps before this update so phase matches decideAction.
+    ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate).totalSteps,
+  ) : null
+  if (curriculum) {
+    // Scale base events and survival-seek separately so collision ≠ approach.
+    // Only amplify positive seek in survival_primer; keep anti-spin penalties unscaled
+    // so turning toward food is not crushed during the hunger ramp.
+    const conditionEffects = effectsFromWorldConfig(world.config)
+    const base = combined - seek
+    const scaledBase = scaleCurriculumReward(
+      base,
+      {
+        ate: outcome.ate,
+        driveRelief:
+          outcome.interactedId != null && isDriveReliefTarget(outcome.targetKind),
+      },
+      curriculum,
+      conditionEffects,
+    )
+    const scaledSeek =
+      seek > 0
+        ? scaleCurriculumReward(
+            seek,
+            { ate: false, driveRelief: false, survivalSeek: true },
+            curriculum,
+            conditionEffects,
+          )
+        : seek
+    reward = scaledBase + scaledSeek
+  }
 
   if (!context.learningEnabled) {
     return reward
@@ -125,11 +204,10 @@ export function applyLearningUpdate(
     context.learningConfig.discountFactor,
   )
 
-  brain.epsilon = decayEpsilon(
-    brain.epsilon,
-    context.learningConfig.epsilonDecay,
-    context.learningConfig.minEpsilon,
-  )
+  const epsilonDecay = curriculum
+    ? curriculumEpsilonDecay(context.learningConfig.epsilonDecay, curriculum)
+    : context.learningConfig.epsilonDecay
+  brain.epsilon = decayEpsilon(brain.epsilon, epsilonDecay, context.learningConfig.minEpsilon)
   recordLearningStep(brain, outcome.action, reward, explored)
 
   return reward

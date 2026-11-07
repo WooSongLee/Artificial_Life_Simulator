@@ -1,5 +1,6 @@
 import type { Agent } from './agent'
 import type { ForageNode, WorldTool } from './forage'
+import type { Interactable } from './interactable'
 import type { TerrainGrid, TerrainPreset } from './terrain'
 
 export interface WorldOutcomeStats {
@@ -9,6 +10,12 @@ export interface WorldOutcomeStats {
   toolPickupSuccesses: number
   gatherAttempts: number
   gatherSuccesses: number
+  interactAttempts: number
+  interactSuccesses: number
+  /** Lab rest_bed / lookout successes (non-survival drive picks). */
+  drivePicks: number
+  /** Survival picks: EAT selections or successful food eats (drive tradeoff UI). */
+  survivalPicks: number
   damageDealt: number
   damageReceived: number
   attackAttempts: number
@@ -39,10 +46,33 @@ export const RESOURCE_DISTRIBUTIONS = ['uniform', 'clustered', 'edge'] as const
 
 export type ResourceDistribution = (typeof RESOURCE_DISTRIBUTIONS)[number]
 
+/** Ecology preserves the multi-agent ecosystem. Human Behavior Lab is a single-agent sandbox. */
+export const SIMULATION_MODES = ['ecology', 'human_behavior_lab'] as const
+
+export type SimulationMode = (typeof SIMULATION_MODES)[number]
+
+/** Lab-only experimental presets. Ecology ignores this field. */
+export const LAB_CONDITIONS = [
+  'baseline',
+  'food_scarce',
+  'rest_locked',
+  'curiosity_prime',
+  'tradeoff_hard',
+] as const
+
+export type LabCondition = (typeof LAB_CONDITIONS)[number]
+
 export interface WorldConfig {
   size: number
   gridDivisions: number
   agentCount: number
+  /** Defaults to ecology for legacy saves; new sessions also start in ecology. */
+  mode: SimulationMode
+  /**
+   * Human Behavior Lab experimental condition. Defaults to baseline.
+   * Ecology worlds keep the field but never apply it.
+   */
+  labCondition: LabCondition
   initialFoodCount: number
   foodRegenRate: number
   obstacleDensity: number
@@ -64,6 +94,8 @@ export interface WorldState {
   agents: Agent[]
   forageNodes: ForageNode[]
   worldTools: WorldTool[]
+  /** Door/Switch/Box objects. Ecology defaults to []; Lab seeds a switch→door pair. */
+  interactables: Interactable[]
   foodSpawnCooldown: number
   forageSpawnCooldown: number
   generation: number

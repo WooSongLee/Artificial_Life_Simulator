@@ -58,13 +58,25 @@ export function migrateExperimentRecord(value: unknown): unknown {
 
   const version = value.schemaVersion
   if (version === 1 || version === undefined) {
-    return withPersonalityFields(migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(withSchemaVersions({ ...value })))))
+    return withPersonalityFields(
+      migrateV5ToV6(
+        migrateV4ToV5(migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(withSchemaVersions({ ...value }))))),
+      ),
+    )
   }
   if (version === 2) {
-    return withPersonalityFields(migrateV3ToV4(migrateV2ToV3(withSchemaVersions({ ...value }))))
+    return withPersonalityFields(
+      migrateV5ToV6(migrateV4ToV5(migrateV3ToV4(migrateV2ToV3(withSchemaVersions({ ...value }))))),
+    )
   }
   if (version === 3) {
-    return withPersonalityFields(migrateV3ToV4(withSchemaVersions({ ...value })))
+    return withPersonalityFields(migrateV5ToV6(migrateV4ToV5(migrateV3ToV4(withSchemaVersions({ ...value })))))
+  }
+  if (version === 4) {
+    return withPersonalityFields(migrateV5ToV6(migrateV4ToV5(withSchemaVersions({ ...value }))))
+  }
+  if (version === 5) {
+    return withPersonalityFields(migrateV5ToV6(withSchemaVersions({ ...value })))
   }
   if (version === EXPERIMENT_SCHEMA_VERSION) {
     return withPersonalityFields(ensureCurrentFields(withSchemaVersions({ ...value })))
@@ -117,6 +129,67 @@ function migrateV2ToV3(record: Record<string, unknown>): Record<string, unknown>
 }
 
 function migrateV3ToV4(record: Record<string, unknown>): Record<string, unknown> {
+  const worldConfig = migrateWorldConfig(record.worldConfig)
+  const migratedWorld = migrateWorld(record.world, worldConfig)
+  const brains = migrateBrains(record.brains, migratedWorld.world)
+  const warnings = [
+    ...(Array.isArray(record.migrationWarnings)
+      ? record.migrationWarnings.filter((item) => typeof item === 'string')
+      : []),
+    ...migratedWorld.warnings,
+  ]
+  if (brains.reason) warnings.push(brains.reason)
+
+  return {
+    ...record,
+    schemaVersion: 4,
+    actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    // Historical STEP 12 observation version; later steps bump via migrateV5ToV6.
+    observationSchemaVersion: 4,
+    worldConfig,
+    world: migratedWorld.world,
+    rewardConfig: migrateRewardConfig(record.rewardConfig),
+    brains: brains.brains,
+    qTableStatus: combineQTableStatus(intactOrExisting(record.qTableStatus), brains.status),
+    qTableResetReason: brains.reason ?? (typeof record.qTableResetReason === 'string' ? record.qTableResetReason : null),
+    migrationWarnings: uniqueStrings(warnings),
+  }
+}
+
+function migrateV4ToV5(record: Record<string, unknown>): Record<string, unknown> {
+  const worldConfig = migrateWorldConfig(record.worldConfig)
+  const migratedWorld = migrateWorld(record.world, worldConfig)
+  const warnings = [
+    ...(Array.isArray(record.migrationWarnings)
+      ? record.migrationWarnings.filter((item) => typeof item === 'string')
+      : []),
+    ...migratedWorld.warnings,
+  ]
+  if (!isRecord(record.worldConfig) || record.worldConfig.mode === undefined) {
+    warnings.push('Simulation mode was missing; defaulted to Ecology.')
+  }
+
+  return {
+    ...record,
+    schemaVersion: 5,
+    actionSchemaVersion: ACTION_SCHEMA_VERSION,
+    // Keep Observation v4 here; STEP 16 interactable cue bumps in migrateV5ToV6.
+    observationSchemaVersion:
+      typeof record.observationSchemaVersion === 'number' && Number.isFinite(record.observationSchemaVersion)
+        ? record.observationSchemaVersion
+        : 4,
+    worldConfig,
+    world: migratedWorld.world,
+    rewardConfig: migrateRewardConfig(record.rewardConfig),
+    // Mode-only step: leave brains for migrateV5ToV6 (Observation v5 reset).
+    brains: record.brains,
+    qTableStatus: intactOrExisting(record.qTableStatus),
+    qTableResetReason: typeof record.qTableResetReason === 'string' ? record.qTableResetReason : null,
+    migrationWarnings: uniqueStrings(warnings),
+  }
+}
+
+function migrateV5ToV6(record: Record<string, unknown>): Record<string, unknown> {
   const worldConfig = migrateWorldConfig(record.worldConfig)
   const migratedWorld = migrateWorld(record.world, worldConfig)
   const brains = migrateBrains(record.brains, migratedWorld.world)
@@ -205,6 +278,7 @@ function migrateWorld(
         agents: [],
         forageNodes: forage.forageNodes,
         worldTools: forage.worldTools,
+        interactables: [],
         foodSpawnCooldown: 0,
         forageSpawnCooldown: 0,
         generation: 1,
@@ -254,6 +328,13 @@ function migrateWorld(
     warnings.push('Older save had no forage or tools. Seeded them from the world config.')
   }
 
+  const interactables = Array.isArray(value.interactables)
+    ? (value.interactables as WorldState['interactables'])
+    : []
+  if (!Array.isArray(value.interactables)) {
+    warnings.push('Older save had no interactables. Defaulted to an empty list.')
+  }
+
   const relocated = relocateAgentsOffWater({
     ...(value as unknown as WorldState),
     config,
@@ -262,6 +343,7 @@ function migrateWorld(
     agents,
     forageNodes,
     worldTools,
+    interactables,
     foodSpawnCooldown: typeof value.foodSpawnCooldown === 'number' ? value.foodSpawnCooldown : 0,
     forageSpawnCooldown: typeof value.forageSpawnCooldown === 'number' ? value.forageSpawnCooldown : 0,
     outcomeStats: sanitizeOutcomeStats(value.outcomeStats),

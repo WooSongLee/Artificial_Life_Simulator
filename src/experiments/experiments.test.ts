@@ -51,7 +51,9 @@ describe('experiment save/load', () => {
     expect(parsed.ok).toBe(true)
     expect(parsed.value?.world.agents).toHaveLength(3)
     expect(parsed.value?.brains).toHaveLength(3)
-    expect(parsed.value?.schemaVersion).toBe(4)
+    expect(parsed.value?.schemaVersion).toBe(6)
+    expect(parsed.value?.worldConfig.mode).toBe('ecology')
+    expect(parsed.value?.world.config.mode).toBe('ecology')
     expect(parsed.value?.world.forageNodes.length).toBeGreaterThan(0)
     expect(parsed.value?.world.worldTools.length).toBeGreaterThan(0)
     expect(parsed.value?.world.agents.every((agent) => agent.equipment === null || agent.equipment.durability > 0)).toBe(true)
@@ -98,7 +100,8 @@ describe('experiment save/load', () => {
     }
 
     const migrated = migrateExperimentRecord(legacy) as typeof record
-    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.worldConfig.mode).toBe('ecology')
     expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
     expect(migrated.actionSchemaVersion).toBe(ACTION_SCHEMA_VERSION)
     expect(migrated.world.terrain.cells.length).toBeGreaterThan(0)
@@ -115,7 +118,7 @@ describe('experiment save/load', () => {
     expect(validated.ok).toBe(true)
     expect(validated.value?.world.agents[0]?.genome).toEqual(firstAgent.genome)
     expect(validated.value?.brains[0]?.qTable).toEqual([])
-    expect(validated.value?.schemaVersion).toBe(4)
+    expect(validated.value?.schemaVersion).toBe(6)
   })
 
   it('migrates schemaVersion 2 records by seeding forage/tools and resetting Q-tables', () => {
@@ -146,7 +149,8 @@ describe('experiment save/load', () => {
     }
 
     const migrated = migrateExperimentRecord(v2) as typeof record
-    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.worldConfig.mode).toBe('ecology')
     expect(migrated.world.forageNodes.length).toBeGreaterThan(0)
     expect(migrated.world.worldTools.length).toBeGreaterThan(0)
     expect(migrated.brains[0]?.qTable).toEqual([])
@@ -155,7 +159,7 @@ describe('experiment save/load', () => {
     expect(validateExperimentRecord(v2).ok).toBe(true)
   })
 
-  it('migrates schemaVersion 3 records by resetting Q-tables for observation v4', () => {
+  it('migrates schemaVersion 3 records by resetting Q-tables for observation bump', () => {
     const record = snapshotWorld()
     const v3 = {
       ...record,
@@ -171,12 +175,13 @@ describe('experiment save/load', () => {
     }
 
     const migrated = migrateExperimentRecord(v3) as typeof record
-    expect(migrated.schemaVersion).toBe(4)
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.worldConfig.mode).toBe('ecology')
     expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
     expect(migrated.actionSchemaVersion).toBe(ACTION_SCHEMA_VERSION)
     expect(migrated.brains[0]?.qTable).toEqual([])
     expect(migrated.qTableStatus).toBe('reset')
-    expect(migrated.qTableResetReason).toContain('v3 → v4')
+    expect(migrated.qTableResetReason).toContain('Observation schema')
     expect(validateExperimentRecord(v3).ok).toBe(true)
   })
 
@@ -261,15 +266,15 @@ describe('experiment save/load', () => {
   it('pads Q-tables when only newer actions were appended', () => {
     const record = snapshotWorld()
     const currentKey =
-      'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high'
+      'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high|none|na'
     const compatible = {
       ...record,
       actionSchemaVersion: 2,
-      observationSchemaVersion: 4,
+      observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
       brains: record.brains.map((brain) => ({
         ...brain,
         actionSchemaVersion: 2,
-        observationSchemaVersion: 4,
+        observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
         qTable: [[currentKey, [1, 0, 0, 0, 0, 2, 0]]],
       })),
     }
@@ -324,6 +329,115 @@ describe('experiment save/load', () => {
       evolutionConfig: legacyEvolution,
     }) as typeof record
     expect(migrated.evolutionConfig.geneticsEnabled).toBe(true)
+  })
+
+  it('migrates schemaVersion 4 records to v6 with Ecology mode and resets Q for Observation v5', () => {
+    const record = snapshotWorld()
+    const { mode: _mode, ...legacyWorldConfig } = record.worldConfig
+    const { mode: _worldMode, ...legacyWorldInnerConfig } = record.world.config
+    const v4Key = 'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high'
+    const legacy = {
+      ...record,
+      schemaVersion: 4,
+      observationSchemaVersion: 4,
+      worldConfig: legacyWorldConfig,
+      world: {
+        ...record.world,
+        config: legacyWorldInnerConfig,
+      },
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        observationSchemaVersion: 4,
+        qTable: [[v4Key, [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]],
+      })),
+      qTableStatus: 'intact' as const,
+      qTableResetReason: null,
+      migrationWarnings: [],
+    }
+    const migrated = migrateExperimentRecord(legacy) as typeof record
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.worldConfig.mode).toBe('ecology')
+    expect(migrated.world.config.mode).toBe('ecology')
+    expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
+    expect(migrated.qTableStatus).toBe('reset')
+    expect(migrated.brains[0]?.qTable).toEqual([])
+    expect(migrated.qTableResetReason).toMatch(/v4 → v[56]/)
+    expect(migrated.migrationWarnings.some((warning) => warning.includes('Simulation mode'))).toBe(true)
+  })
+
+  it('migrates schemaVersion 5 records to v6 and resets Q-tables for interactable Observation cue', () => {
+    const record = snapshotWorld()
+    const v4Key = 'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high'
+    const legacy = {
+      ...record,
+      schemaVersion: 5,
+      observationSchemaVersion: 4,
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        observationSchemaVersion: 4,
+        qTable: [[v4Key, [0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]]],
+      })),
+      qTableStatus: 'intact' as const,
+      qTableResetReason: null,
+    }
+    const migrated = migrateExperimentRecord(legacy) as typeof record
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
+    expect(migrated.qTableStatus).toBe('reset')
+    expect(migrated.brains[0]?.qTable).toEqual([])
+    expect(migrated.qTableResetReason).toMatch(/v4 → v[56]/)
+  })
+
+  it('preserves Lab mode through JSON save and schema v5→v6 migrate', () => {
+    const labWorld = createInitialWorld({
+      ...DEFAULT_WORLD_CONFIG,
+      mode: 'human_behavior_lab',
+      agentCount: 1,
+      initialFoodCount: 4,
+    })
+    resetBrains(labWorld.agents, DEFAULT_LEARNING_CONFIG)
+    const record = captureExperimentRecord({
+      identity: createExperimentIdentity('Lab Mode Roundtrip'),
+      simulation: {
+        status: 'paused',
+        tick: 3,
+        speed: 1,
+        world: labWorld,
+        learningHistory: createLearningHistory(3, labWorld.agents, true),
+        generationHistory: [],
+        learningEnabled: true,
+        learningConfig: DEFAULT_LEARNING_CONFIG,
+        rewardConfig: DEFAULT_REWARD_CONFIG,
+        evolutionConfig: DEFAULT_EVOLUTION_CONFIG,
+        pendingWorldConfig: null,
+      },
+    })
+
+    const parsed = parseExperimentJson(experimentToJson(record))
+    expect(parsed.ok).toBe(true)
+    expect(parsed.value?.schemaVersion).toBe(6)
+    expect(parsed.value?.worldConfig.mode).toBe('human_behavior_lab')
+    expect(parsed.value?.world.config.mode).toBe('human_behavior_lab')
+    expect(parsed.value?.worldConfig.agentCount).toBe(1)
+    expect(parsed.value?.world.agents).toHaveLength(1)
+
+    const legacy = {
+      ...record,
+      schemaVersion: 5,
+      observationSchemaVersion: 4,
+      brains: record.brains.map((brain) => ({
+        ...brain,
+        observationSchemaVersion: 4,
+        qTable: [],
+      })),
+    }
+    const migrated = migrateExperimentRecord(legacy) as typeof record
+    expect(migrated.schemaVersion).toBe(6)
+    expect(migrated.worldConfig.mode).toBe('human_behavior_lab')
+    expect(migrated.world.config.mode).toBe('human_behavior_lab')
+    expect(migrated.worldConfig.agentCount).toBe(1)
+    expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
+    expect(validateExperimentRecord(migrated).ok).toBe(true)
   })
 
   it('rejects invalid learning rates, schema versions, and incomplete records', () => {

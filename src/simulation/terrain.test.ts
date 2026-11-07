@@ -156,7 +156,7 @@ describe('terrain observation', () => {
     expect(forestKey.split('|')[5]).toBe('forest')
     expect(forestKey.split('|')[6]).toBe('forest')
     expect(decodeObservation(grassKey)?.terrain).toBe('grassland')
-    expect(STATE_SPACE_SIZE).toBe(170_100_000)
+    expect(STATE_SPACE_SIZE).toBe(13_608_000_000)
   })
 
   it('hides food that is beyond forest-reduced vision', () => {

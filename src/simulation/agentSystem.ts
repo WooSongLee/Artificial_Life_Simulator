@@ -15,12 +15,15 @@ import {
   simulationTimeAt,
 } from '../learning/actionEvents'
 import { applyLearningUpdate, decideAction, type LearningStepContext } from '../learning/controller'
+import { labCurriculumDriveRates } from '../learning/labCurriculum'
 import { findFoodInEatRange } from '../learning/observation'
 import type { AgentAction } from '../learning/types'
 import type { ActionTarget, Agent } from '../types/agent'
 import type { AttackIntent } from '../types/combat'
 import type { ForageNode, WorldTool } from '../types/forage'
+import type { Interactable } from '../types/interactable'
 import type { WorldObject, WorldState } from '../types/world'
+import { createId } from '../utils/id'
 import { clampStat, finiteNumber, rotateTowards, wrapAngle } from '../utils/math'
 import {
   AGENT_RADIUS,
@@ -40,6 +43,15 @@ import {
   getFoodSpawnInterval,
 } from './constants'
 import {
+  allowsDeath,
+  applyLookoutDriveTradeoff,
+  applyRestBedDriveTradeoff,
+  isHumanBehaviorLab,
+  keepLabAgentAlive,
+  LAB_HEALTH_FLOOR,
+  tickLabDrives,
+} from './labMode'
+import {
   applyDefend,
   applyFlee,
   createAttackIntent,
@@ -55,6 +67,17 @@ import {
   findGatherableNode,
   findPickupTool,
 } from './forage'
+import {
+  applyBoxPush,
+  applyLookoutUse,
+  applyRestBedUse,
+  applySwitchToggle,
+  findBoxInInteractRange,
+  findLookoutInInteractRange,
+  findRestBedInInteractRange,
+  findSwitchInInteractRange,
+  pickLabFoodPosition,
+} from './interactables'
 import { isBlockedWorldPosition } from './spatial'
 import { getAgentTerrain, getAgentTerrainProfile } from './terrain'
 import { createWorldObject } from './worldFactory'
@@ -71,6 +94,7 @@ export interface AgentTickResult {
   pickedUpToolId: string | null
   gatheredNode: ForageNode | null
   gatheredAmount: number
+  interactedId: string | null
   durabilityDelta: number
   targetKind: string | null
   affectedAgents: Agent[]
@@ -88,6 +112,8 @@ export interface AgentPlan {
   pickedUpToolId: string | null
   gatheredNode: ForageNode | null
   gatheredAmount: number
+  interactedId: string | null
+  interactables: Interactable[] | null
   durabilityDelta: number
   targetKind: string | null
   actionTarget: ActionTarget | null
@@ -95,7 +121,12 @@ export interface AgentPlan {
   energyBefore: number
   healthBefore: number
   hungerBefore: number
+  fatigueBefore?: number
+  curiosityBefore?: number
+  comfortBefore?: number
   foodInEatRange: boolean
+  /** Action on the agent before this tick's decision (for spin oscillation penalty). */
+  previousAction: AgentAction | null
   decision: ReturnType<typeof decideAction> | null
   eventId: string | null
   attackIntent: AttackIntent | null
@@ -112,6 +143,7 @@ function emptyTickResult(agent: Agent, extra: Partial<AgentTickResult> = {}): Ag
     pickedUpToolId: null,
     gatheredNode: null,
     gatheredAmount: 0,
+    interactedId: null,
     durabilityDelta: 0,
     targetKind: null,
     affectedAgents: [],
@@ -132,6 +164,8 @@ function skippedPlan(agent: Agent, droppedTools: WorldTool[] = []): AgentPlan {
     pickedUpToolId: null,
     gatheredNode: null,
     gatheredAmount: 0,
+    interactedId: null,
+    interactables: null,
     durabilityDelta: 0,
     targetKind: null,
     actionTarget: null,
@@ -140,6 +174,7 @@ function skippedPlan(agent: Agent, droppedTools: WorldTool[] = []): AgentPlan {
     healthBefore: agent.health,
     hungerBefore: agent.hunger,
     foodInEatRange: false,
+    previousAction: agent.lastAction,
     decision: null,
     eventId: null,
     attackIntent: null,
@@ -180,7 +215,8 @@ function applyMetabolism(agent: Agent, dt: number, action: AgentAction, world?: 
     health = clampStat(health + HEALTH_REGEN_PER_SEC * dt)
   }
 
-  if (health <= 0) {
+  const labImmortal = world !== undefined && !allowsDeath(world.config.mode)
+  if (health <= 0 && !labImmortal) {
     return {
       ...agent,
       energy,
@@ -197,8 +233,9 @@ function applyMetabolism(agent: Agent, dt: number, action: AgentAction, world?: 
     ...agent,
     energy,
     hunger,
-    health,
+    health: labImmortal ? Math.max(LAB_HEALTH_FLOOR, health) : health,
     alive: true,
+    deathCause: labImmortal ? null : agent.deathCause,
   }
 }
 
@@ -294,6 +331,7 @@ function executeAction(
   action: AgentAction,
   world: WorldState,
   dt: number,
+  tick = 0,
 ): {
   agent: Agent
   ate: boolean
@@ -302,6 +340,8 @@ function executeAction(
   pickedUpToolId: string | null
   gatheredNode: ForageNode | null
   gatheredAmount: number
+  interactedId: string | null
+  interactables: Interactable[] | null
   durabilityDelta: number
   targetKind: string | null
   actionTarget: ActionTarget | null
@@ -339,15 +379,131 @@ function executeAction(
     }
     case 'GATHER': {
       const node = findGatherableNode(agent, world)
-      if (!node) return withAutoEat(agent, world.objects)
-      const gathered = applyGather(agent, node)
+      if (node) {
+        const gathered = applyGather(agent, node)
+        return {
+          ...withAutoEat(gathered.agent, world.objects),
+          gatheredNode: gathered.node,
+          gatheredAmount: gathered.amount,
+          durabilityDelta: gathered.durabilityDelta,
+          targetKind: node.kind,
+          actionTarget: { kind: node.kind, id: node.id, x: node.position.x, z: node.position.z },
+        }
+      }
+      // Lab drives: prefer rest/lookout over tool props when those drives dominate.
+      const preferRest =
+        agent.fatigue !== undefined &&
+        (agent.fatigue >= 55 || (agent.comfort !== undefined && agent.comfort <= 45))
+      const preferLook =
+        agent.curiosity !== undefined && agent.curiosity >= 55 && !preferRest
+      if (preferRest) {
+        const nearbyBed = findRestBedInInteractRange(agent, world.interactables ?? [])
+        if (nearbyBed) {
+          const rested = applyRestBedUse(world.interactables ?? [], nearbyBed.id, tick)
+          if (rested) {
+            return {
+              ...withAutoEat(applyRestBedDriveTradeoff(agent), world.objects),
+              interactedId: rested.bed.id,
+              interactables: rested.interactables,
+              targetKind: 'rest_bed',
+              actionTarget: {
+                kind: 'rest_bed',
+                id: rested.bed.id,
+                x: rested.bed.position.x,
+                z: rested.bed.position.z,
+              },
+            }
+          }
+        }
+      }
+      if (preferLook) {
+        const nearbyLookout = findLookoutInInteractRange(agent, world.interactables ?? [])
+        if (nearbyLookout) {
+          const looked = applyLookoutUse(world.interactables ?? [], nearbyLookout.id, tick)
+          if (looked) {
+            return {
+              ...withAutoEat(applyLookoutDriveTradeoff(agent), world.objects),
+              interactedId: looked.lookout.id,
+              interactables: looked.interactables,
+              targetKind: 'lookout',
+              actionTarget: {
+                kind: 'lookout',
+                id: looked.lookout.id,
+                x: looked.lookout.position.x,
+                z: looked.lookout.position.z,
+              },
+            }
+          }
+        }
+      }
+      const nearbySwitch = findSwitchInInteractRange(agent, world.interactables ?? [])
+      if (nearbySwitch) {
+        const toggled = applySwitchToggle(world.interactables ?? [], nearbySwitch.id)
+        if (!toggled) return withAutoEat(agent, world.objects)
+        return {
+          ...withAutoEat(agent, world.objects),
+          interactedId: toggled.switchItem.id,
+          interactables: toggled.interactables,
+          targetKind: 'switch',
+          actionTarget: {
+            kind: 'switch',
+            id: toggled.switchItem.id,
+            x: toggled.switchItem.position.x,
+            z: toggled.switchItem.position.z,
+          },
+        }
+      }
+      const nearbyBox = findBoxInInteractRange(agent, world.interactables ?? [])
+      if (nearbyBox) {
+        const pushed = applyBoxPush(world.interactables ?? [], nearbyBox.id, agent.rotation, world)
+        if (pushed) {
+          return {
+            ...withAutoEat(agent, world.objects),
+            interactedId: pushed.box.id,
+            interactables: pushed.interactables,
+            targetKind: 'movable_box',
+            actionTarget: {
+              kind: 'movable_box',
+              id: pushed.box.id,
+              x: pushed.box.position.x,
+              z: pushed.box.position.z,
+            },
+          }
+        }
+      }
+      const nearbyBed = findRestBedInInteractRange(agent, world.interactables ?? [])
+      if (nearbyBed) {
+        const rested = applyRestBedUse(world.interactables ?? [], nearbyBed.id, tick)
+        if (rested) {
+          return {
+            ...withAutoEat(applyRestBedDriveTradeoff(agent), world.objects),
+            interactedId: rested.bed.id,
+            interactables: rested.interactables,
+            targetKind: 'rest_bed',
+            actionTarget: {
+              kind: 'rest_bed',
+              id: rested.bed.id,
+              x: rested.bed.position.x,
+              z: rested.bed.position.z,
+            },
+          }
+        }
+      }
+      const nearbyLookout = findLookoutInInteractRange(agent, world.interactables ?? [])
+      if (!nearbyLookout) return withAutoEat(agent, world.objects)
+      const looked = applyLookoutUse(world.interactables ?? [], nearbyLookout.id, tick)
+      if (!looked) return withAutoEat(agent, world.objects)
       return {
-        ...withAutoEat(gathered.agent, world.objects),
-        gatheredNode: gathered.node,
-        gatheredAmount: gathered.amount,
-        durabilityDelta: gathered.durabilityDelta,
-        targetKind: node.kind,
-        actionTarget: { kind: node.kind, id: node.id, x: node.position.x, z: node.position.z },
+        ...withAutoEat(applyLookoutDriveTradeoff(agent), world.objects),
+        interactedId: looked.lookout.id,
+        interactables: looked.interactables,
+        targetKind: 'lookout',
+        actionTarget: {
+          kind: 'lookout',
+          id: looked.lookout.id,
+          x: looked.lookout.position.x,
+          z: looked.lookout.position.z,
+        },
       }
     }
     case 'ATTACK': {
@@ -393,6 +549,8 @@ function withAutoEat(
     pickedUpToolId: string | null
     gatheredNode: ForageNode | null
     gatheredAmount: number
+    interactedId: string | null
+    interactables: Interactable[] | null
     durabilityDelta: number
     targetKind: string | null
     actionTarget: ActionTarget | null
@@ -410,6 +568,8 @@ function withAutoEat(
     pickedUpToolId: extra.pickedUpToolId ?? null,
     gatheredNode: extra.gatheredNode ?? null,
     gatheredAmount: extra.gatheredAmount ?? 0,
+    interactedId: extra.interactedId ?? null,
+    interactables: extra.interactables ?? null,
     durabilityDelta: extra.durabilityDelta ?? 0,
     targetKind: extra.targetKind ?? null,
     actionTarget: extra.actionTarget ?? null,
@@ -433,31 +593,45 @@ export function beginAgentTick(
   dt: number,
   context: LearningStepContext,
 ): AgentPlan {
-  if (!agent.alive || agent.health <= 0) {
+  const labImmortal = !allowsDeath(world.config.mode)
+  const starting = labImmortal ? keepLabAgentAlive(agent) : agent
+
+  if (!labImmortal && (!starting.alive || starting.health <= 0)) {
     return skippedPlan(
-      agent.alive
+      starting.alive
         ? takeDeathDrop({
-            ...agent,
+            ...starting,
             health: 0,
             alive: false,
-            deathCause: agent.deathCause ?? 'health',
+            deathCause: starting.deathCause ?? 'health',
             matingPartnerId: null,
             matingTimeLeft: 0,
-          }, agent.deathCause ?? 'health').agent
-        : agent,
+          }, starting.deathCause ?? 'health').agent
+        : starting,
     )
   }
 
   const geneticsEnabled = context.geneticsEnabled !== false
-  const driven = tickCombatTimers(applyDrives(agent, dt, geneticsEnabled), dt)
+  const withLabDrives = isHumanBehaviorLab(world.config.mode)
+    ? tickLabDrives(starting, dt, labCurriculumDriveRates(context.tick ?? 0, world.config))
+    : starting
+  let driven = tickCombatTimers(applyDrives(withLabDrives, dt, geneticsEnabled), dt)
   if (!driven.alive) {
-    const death = takeDeathDrop(driven, 'age')
-    return skippedPlan(death.agent, death.dropped ? [death.dropped] : [])
+    if (labImmortal) {
+      driven = keepLabAgentAlive(driven)
+    } else {
+      const death = takeDeathDrop(driven, 'age')
+      return skippedPlan(death.agent, death.dropped ? [death.dropped] : [])
+    }
   }
 
   const energyBefore = driven.energy
   const hungerBefore = driven.hunger
   const healthBefore = driven.health
+  const fatigueBefore = driven.fatigue
+  const curiosityBefore = driven.curiosity
+  const comfortBefore = driven.comfort
+  const previousAction = driven.lastAction
   const foodInEatRange = findFoodInEatRange(driven, world.objects) !== null
   const mating = geneticsEnabled && isMating(driven)
   const seeking = geneticsEnabled && !mating && shouldSeekMate(driven)
@@ -467,7 +641,8 @@ export function beginAgentTick(
       ? consumeNearbyFood(driven, world.objects)
       : consumeNearbyFood(seekMate(driven, world, dt), world.objects)
     const nextAgent = applyMetabolism(acted.agent, dt, mating ? 'REST' : 'MOVE_FORWARD', world)
-    const death = takeDeathDrop(nextAgent, nextAgent.deathCause ?? 'health')
+    const afterMetabolism = labImmortal ? keepLabAgentAlive(nextAgent) : nextAgent
+    const death = takeDeathDrop(afterMetabolism, afterMetabolism.deathCause ?? 'health')
     return {
       ...skippedPlan(death.agent, death.dropped ? [death.dropped] : []),
       consumedFoodId: acted.consumedFoodId,
@@ -475,7 +650,11 @@ export function beginAgentTick(
       energyBefore,
       healthBefore,
       hungerBefore,
+      fatigueBefore,
+      curiosityBefore,
+      comfortBefore,
       foodInEatRange,
+      previousAction,
       agent: {
         ...death.agent,
         lastAction: mating ? 'REST' : 'MOVE_FORWARD',
@@ -508,9 +687,10 @@ export function beginAgentTick(
     heldTool: driven.equipment !== null,
   })
 
-  const executed = executeAction(driven, decision.selection.action, world, dt)
+  const executed = executeAction(driven, decision.selection.action, world, dt, tick)
   const nextAgent = applyMetabolism(executed.agent, dt, decision.selection.action, world)
-  const death = takeDeathDrop(nextAgent, nextAgent.deathCause ?? 'health')
+  const afterMetabolism = labImmortal ? keepLabAgentAlive(nextAgent) : nextAgent
+  const death = takeDeathDrop(afterMetabolism, afterMetabolism.deathCause ?? 'health')
 
   return {
     agent: death.agent,
@@ -519,6 +699,8 @@ export function beginAgentTick(
     pickedUpToolId: executed.pickedUpToolId,
     gatheredNode: executed.gatheredNode,
     gatheredAmount: executed.gatheredAmount,
+    interactedId: executed.interactedId,
+    interactables: executed.interactables,
     durabilityDelta: executed.durabilityDelta,
     targetKind: executed.targetKind,
     actionTarget: executed.actionTarget,
@@ -526,7 +708,11 @@ export function beginAgentTick(
     energyBefore,
     healthBefore,
     hungerBefore,
+    fatigueBefore,
+    curiosityBefore,
+    comfortBefore,
     foodInEatRange,
+    previousAction,
     decision,
     eventId,
     attackIntent: nextAgent.alive ? executed.attackIntent : null,
@@ -582,6 +768,7 @@ export function finishAgentTick(
     forageNodes: plan.gatheredNode
       ? world.forageNodes.map((node) => (node.id === plan.gatheredNode?.id ? plan.gatheredNode : node))
       : world.forageNodes,
+    interactables: plan.interactables ?? world.interactables ?? [],
   }
 
   const reward = applyLearningUpdate(
@@ -597,6 +784,7 @@ export function finishAgentTick(
       pickedUpToolId: plan.pickedUpToolId,
       gatheredNodeId: plan.gatheredNode?.id ?? null,
       gatheredAmount: plan.gatheredAmount,
+      interactedId: plan.interactedId,
       durabilityDelta,
       targetKind: plan.targetKind,
       damageDealt,
@@ -611,6 +799,15 @@ export function finishAgentTick(
     plan.decision.selection.explored,
     context,
     plan.decision.legalActions,
+    {
+      fatigue: plan.fatigueBefore,
+      curiosity: plan.curiosityBefore,
+      comfort: plan.comfortBefore,
+    },
+    {
+      foodDirection: plan.decision.observation.foodDirection,
+      previousAction: plan.previousAction,
+    },
   )
 
   const outcome = classifyActionOutcome({
@@ -620,6 +817,7 @@ export function finishAgentTick(
     died,
     pickedUp: plan.pickedUpToolId !== null,
     gathered: plan.gatheredAmount > 0,
+    interacted: plan.interactedId !== null,
     attackHit: damageDealt > 0,
     attackAttempted: plan.decision.selection.action === 'ATTACK',
     fledFarther: fledFarther(plan.fleeDistanceBefore, plan.fleeDistanceAfter),
@@ -638,7 +836,12 @@ export function finishAgentTick(
       agentId: plan.agent.id,
       action: plan.decision.selection.action,
       outcome,
-      targetId: combatTargetId ?? plan.pickedUpToolId ?? plan.gatheredNode?.id ?? plan.consumedFoodId,
+      targetId:
+        combatTargetId ??
+        plan.pickedUpToolId ??
+        plan.gatheredNode?.id ??
+        plan.interactedId ??
+        plan.consumedFoodId,
       targetKind: plan.targetKind,
       gatheredAmount: plan.gatheredAmount,
       durabilityDelta,
@@ -669,6 +872,7 @@ export function finishAgentTick(
     pickedUpToolId: plan.pickedUpToolId,
     gatheredNode: plan.gatheredNode,
     gatheredAmount: plan.gatheredAmount,
+    interactedId: plan.interactedId,
     durabilityDelta,
     targetKind: plan.targetKind,
     affectedAgents,
@@ -727,7 +931,18 @@ export function respawnFood(
       break
     }
 
-    nextObjects.push(createWorldObject('food', world.config, nextObjects, Math.random, undefined, world.terrain))
+    if (isHumanBehaviorLab(world.config.mode)) {
+      const spot = pickLabFoodPosition(nextObjects, currentFood)
+      nextObjects.push({
+        id: createId('food'),
+        type: 'food',
+        position: { x: spot.x, y: 0, z: spot.z },
+        scale: 1,
+        rotation: 0,
+      })
+    } else {
+      nextObjects.push(createWorldObject('food', world.config, nextObjects, Math.random, undefined, world.terrain))
+    }
     cooldown += spawnInterval
   }
 

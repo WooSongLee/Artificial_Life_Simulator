@@ -1,3 +1,11 @@
+# Autonomous runner local state/logs
+scripts/runner_state/
+
+# Local smoke / probe artifacts
+tmp/
+
+# Logs
+
 # Logs
 logs
 *.log

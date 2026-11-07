@@ -12,7 +12,7 @@
 |---|---|
 | 프로젝트명 | Artificial Life Simulator |
 | 문서 파일 | `ARTIFICIAL_LIFE_SPEC.md` |
-| 문서 버전 | 0.21.0 |
+| 문서 버전 | 0.42.0 |
 | 문서 상태 | 초기 기준 명세 (Draft) |
 | 기본 제품 형태 | 브라우저에서 실행되는 3D 인공 생태계 시뮬레이터 |
 | 기본 사용자 | 개발자 본인 및 시뮬레이션을 관찰·실험하는 사용자 |
@@ -22,6 +22,33 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |---|---|---|
+| 0.42.0 | 2026-11-07 | STEP 23 Done. Lab → conditioned chamber lab (vestibule + survival/rest/lookout). `WorldConfig.labCondition` presets (baseline/food_scarce/rest_locked/curiosity_prime/tradeoff_hard). Procedural walls + apparatus meshes + shelf food. Ecology 무변경. |
+| 0.41.6 | 2026-11-07 | STEP 22 Done. Smell-test: Lab human → textured Mixamo Michelle(face/skin/clothes; not Vanguard armor); albedo preserved + soft energy emissive. `lab:probe` curriculumShift + Ecology green. |
+| 0.41.5 | 2026-11-07 | STEP 22 궤적/UI 가시화: Lab trail을 Eat=warm / rest·lookout=cool + choice beacons(실 actionTarget), Learning early→late drive share(실 action events). Ecology 무변경. |
+| 0.41.4 | 2026-11-07 | Lab 학습 커리큘럼(no PPO): tick 압력 survival→drive→tradeoff + ε/보상/seek·rest homing. `lab:probe` early→late shift. survivalPicks=`ate`. STEP 22 In Progress. Ecology 무변경. |
+| 0.41.3 | 2026-11-07 | Lab drives → Observation v6(`drive` cue)+match/approach bias+보상 shaping. Arena spawn. `lab:probe` Learning driveRate ≥ Frozen. STEP 21 Done. Ecology 무변경. |
+| 0.41.2 | 2026-11-07 | Lab 공간을 학습 교사로 재배치: +Z survival/tool · SW rest nook · SE lookout 시드·존 조명·테이블 먹이. lookout `look_*` observation 수정. Ecology 무변경. |
+| 0.41.1 | 2026-11-07 | Lab 피사체를 Mixamo skinned GLTF(`public/models/lab-human.glb` + `LabHumanGltf`)로 교체. Idle-rest 위에 기존 motion pose 훅 적용. EcologyFigure 유지. STEP 21 렌더 절반. |
+| 0.41.0 | 2026-11-07 | STEP 21–22 시작. 북극성: (1) Lab 사람을 진짜 사람처럼 렌더 (2) 학습으로 생존↔인간다운 행동 변화가 보이게. `lab:probe` learn-vs-frozen. Ecology 유지. |
+| 0.40.0 | 2026-11-07 | HBL 사망 제거(`allowsDeath`/`keepLabAgentAlive`, health floor). Lab humanoid 비율·얼굴·손 개선. 보행에 체중이동·lean·idle 호흡. Ecology 사망/리그 유지. |
+| 0.39.0 | 2026-11-07 | STEP 18–20 Done 마킹. §19 상태 Done. Lab drives(fatigue/curiosity/comfort)+bias/보상, survival vs non-survival trajectory UI, walk/run·drive gesture 모션. Ecology 무변경. PPO/감정 미터 없음. |
+| 0.38.0 | 2026-11-07 | STEP 18 Done. Lab close cam + LabLights 근접 조명. Arena+humanoid 완료. Ecology 무변경. |
+| 0.37.0 | 2026-11-07 | STEP 18 Lab scene fork. Lab: Terrain/WorldObjects/ForageAndTools/FoodSeekPath/CombatCues 스킵 + LabFloor/LabLights. Ecology 렌더 유지. |
+| 0.36.0 | 2026-11-07 | HBL 재초점: Lab=사람1. 생태 소품 제거. **배경/안개/조명/바닥을 Ecology와 완전 분리.** 사람 비주얼은 R3F/drei 등 가용 기술로 최대한 실사에 가깝게. Ecology 무변경. |
+| 0.35.0 | 2026-11-07 | STEP 18 구역 가시화. Rest/Tool zone pads. |
+| 0.34.0 | 2026-11-07 | STEP 18 첫 slice. Lab `rest_bed` 시드·GATHER 사용·3D·interactSuccess. Observation cue에 `rest_*` 추가(13값, 토큰 수 유지·schemaVersion 유지). Ecology `[]` 유지. |
+| 0.33.0 | 2026-11-07 | STEP 18–20 시작. HBL 관찰 목표: 단일 개체가 학습하며 생존→인간다운(반생존 가능) 선택을 보이는지. 서식 공간·인간형 드라이브·모션/궤적 가시화. STEP 15–17 Done 유지. |
+| 0.32.0 | 2026-11-06 | STEP 17 완료. planted snap·blendAngle wrap·headed 프로브. |
+| 0.31.0 | 2026-11-06 | STEP 17 네 번째 vertical slice. TURN_LEFT/TURN_RIGHT → turnLeft/turnRight 전용 모션(torsoY 리드 + hipY 발 카운터 트위스트, planted, ~0.35s hold). LimbPose에 torsoY/leftHipY/rightHipY. Ecology/Lab 시뮬·학습·interactable 변경 없음. STEP 17 나머지는 In Progress(수동 브라우저 스모크·완료 조건 최종 확인). |
+| 0.30.0 | 2026-11-06 | STEP 17 세 번째 vertical slice. 액션 안티지터(`stepHeldMotion`, ~0.35s hold; walk/dead는 즉시 중단)와 gather/attack 손-대상 정렬(`computeLocalReachAim` → shoulderY/reach, `actionTarget` 래치)을 추가한다. LimbPose에 shoulderY. Ecology/Lab 시뮬·학습·interactable 변경 없음. STEP 17 나머지는 In Progress(TURN 전용 모션 선택, 수동 브라우저 스모크). |
+| 0.29.0 | 2026-11-06 | STEP 17 두 번째 vertical slice. GATHER/PICK_UP→gather, EAT→eat, ATTACK→attack, DEFEND→defend 상체 포즈를 추가한다. 다리 planted 유지, gather/attack만 렌더 phase 펄스. 월드 xz는 `blendPosition`으로 소프트 팔로우(walk는 느리게, planted는 빠르게)해 틱 스냅·발 미끄러짐을 완화. yaw 스무딩·시뮬 권위 유지. Ecology/Lab 시뮬·학습·interactable 변경 없음. STEP 17 나머지는 In Progress(손-대상 정렬·액션 안티지터 등). |
+| 0.28.0 | 2026-11-06 | STEP 17 첫 vertical slice. Placeholder 인간형 리그(관절 다리/팔)와 idle/walk/dead 모션 매핑을 추가한다. `lastAction` MOVE_FORWARD/FLEE→walk, 그 외 생존→idle. 보행 phase는 렌더 클록만 사용(시뮬 tick과 분리). yaw는 렌더 스무딩. Ecology/Lab 시뮬·학습·interactable은 변경 없음. STEP 17 나머지는 In Progress. |
+| 0.27.0 | 2026-11-06 | STEP 16 완료. Settings에 Interact Success 보상 컨트롤, Lab interactable 클릭 검사 패널(Door/Switch/Box 상태), Learning Dashboard에 interactAttempts/Successes 표면화와 Frozen Q 비교 안내를 추가한다. Action 스키마는 유지(GATHER 재사용). STEP 17은 Not Started. |
+| 0.26.0 | 2026-11-06 | STEP 16 Interactable Observation cue. Observation v5에 `interactable` 토큰(none/switch_*/door_*/box_* close|fwd|oth)을 뒤에 추가. 이론 상태 공간 1,701,000,000. Action 스키마 유지. experiment schemaVersion 6, 구 Observation v4 세이브는 Q-Table만 초기화. Ecology는 cue=`none`. STEP 16 나머지는 In Progress(Settings interactSuccess / Lab 검사 패널 등). |
+| 0.25.0 | 2026-11-06 | STEP 16 Movable Box vertical slice. Lab에 상자 시드, 상자는 이동 차단, GATHER로 facing 방향 push(실제 position 변경), 차단 시 실패(보상 없음), interactSuccess/targetKind=`movable_box`, 3D 메시. Action/Observation 스키마 유지. Ecology는 interactables=[]. STEP 16 나머지는 In Progress(Observation cue / Settings UI 등). |
+| 0.24.0 | 2026-11-06 | STEP 16 첫 vertical slice. Interactable 골격(Door/Switch/Movable Box 타입)과 Lab Switch→Door 인과 상호작용을 추가한다. GATHER 재사용(Action/Observation 스키마 유지), 닫힌 문 차단, interactSuccess 보상, 3D 표시. Ecology는 interactables=[]. STEP 16 나머지는 In Progress. |
+| 0.23.0 | 2026-11-06 | STEP 15 완료. Lab Observation의 타 개체 감지를 `allowsAgentSensing`으로 차단하고, Lab UI에서 전투 보상 설정을 숨기며, Ecology↔Lab 모드 왕복 시 Ecology `agentCount`를 복원한다. STEP 16–17은 Not Started. |
+| 0.22.0 | 2026-11-06 | Human Behavior Lab 확장 시작. `WorldConfig.mode`(`ecology` \| `human_behavior_lab`)와 schemaVersion 5를 추가한다. STEP 15 일부: 단일 개체 강제, 유전/교배/전투 게이트, 모드 UI/저장. 기존 Ecology 기본값 유지. STEP 16–17은 Not Started. |
 | 0.21.0 | 2026-11-01 | 학습 관찰을 위해 유전 On/Off 토글을 추가한다. 새 세션 기본은 Off다. Off면 교배·유전 bias·노화 사망을 멈추고 새 개체는 동일 기본 Genome을 쓴다. 대사·먹이·전투 기본값을 다시 완화하고, 선택 개체 추적 카메라를 추가한다. |
 | 0.20.0 | 2026-11-01 | STEP 14 Persistence & Learning Integration. observation/action 스키마 호환, Q-Table pad/reset 경고, 희소 Q 진단, Action 분석(탐험·지형·도구·전투), 동일 Seed/정책 비교, 3D 행동 대상 표시를 연결한다. PPO는 도입하지 않는다. |
 | 0.19.0 | 2026-11-01 | STEP 13 Extended Genome Traits. Strength/Aggression/Caution/ToolAffinity를 Genome에 추가한다. 교차·돌연변이는 GENOME_GENES 순회를 쓴다. Strength는 피해량, ToolAffinity는 도구 회복·내구도 소모에 쓰인다. Aggression/Caution은 정책 선택 점수의 선천적 bias이며 Q 값을 덮어쓰지 않는다. bias 상한은 0.25다. 빠진 유전자 기본값은 1.0이다. 옛 세대 기록의 새 평균은 만들지 않고 미기록(null)으로 둔다. |
@@ -94,8 +121,9 @@
 - Spear, Shield 등 개체 간 전투·방어·도주 (STEP 12에서 구현)
 - Strength, Aggression, Caution, Tool Affinity 등 유전 특성 확장 (STEP 13에서 구현)
 - 위 요소를 Tabular Q-Learning과 실시간 진화에 연결
+- **Human Behavior Lab:** 단일 인간형 개체의 환경 상호작용·행동 옵션·3D 모션 관찰 (STEP 15–17, **18장**)
 
-상세 설계, 호환 규칙, 단계별 완료 조건은 **17장 확장 로드맵**을 따른다. 17장의 단계는 구현 전까지 `Not Started`로 둔다.
+상세 설계, 호환 규칙, 단계별 완료 조건은 **17장 확장 로드맵**(STEP 9–14)과 **18장 Human Behavior Lab**(STEP 15–17)을 따른다. 구현 전 단계는 `Not Started`로 둔다.
 
 ### 초기 범위에서 제외
 - 실제 인간 수준의 지능 또는 인간 심리 구현
@@ -470,7 +498,7 @@ Q(s, a) ← Q(s, a) + α [r + γ max_a' Q(s', a') - Q(s, a)]
 - Nearby Agent Distance: close(공격 사거리) / mid / far / out
 - Health Level: 낮음 / 보통 / 높음 (0–33 / 34–66 / 67–100)
 
-연속값은 이산 구간으로 변환해 상태 키로 인코딩한다. 상태 인코딩은 별도 모듈로 분리하며, 같은 관찰은 항상 같은 상태 키를 생성해야 한다. Observation v4 이론 상태 공간은 945,000 × (5/3) × (9/5) × 5 × 4 × 3 = 170,100,000이다. Q-Table은 방문한 상태만 저장한다. 지형에 들어갔다는 이유만으로 보상하지 않는다. 채집 성공만으로 획득량과 무관한 큰 보상을 주지 않는다. 공격 횟수나 방어 유지 자체에는 보상하지 않는다.
+연속값은 이산 구간으로 변환해 상태 키로 인코딩한다. 상태 인코딩은 별도 모듈로 분리하며, 같은 관찰은 항상 같은 상태 키를 생성해야 한다. Observation v5 이론 상태 공간은 170,100,000 × 13 = 2,211,300,000이다(v4 170,100,000에 interactable 13값: none + switch/door/box/rest × close|fwd|oth). Q-Table은 방문한 상태만 저장한다. 지형에 들어갔다는 이유만으로 보상하지 않는다. 채집 성공만으로 획득량과 무관한 큰 보상을 주지 않는다. 공격 횟수나 방어 유지 자체에는 보상하지 않는다.
 
 초기에는 상태 공간이 지나치게 커지지 않도록 한다. 구간 수와 방향 구분을 늘리는 경우 메모리와 학습 효율에 미치는 영향을 확인한다.
 
@@ -1137,8 +1165,17 @@ JSON 가져오기는 파일 크기, 버전, 필수 필드 및 값 범위를 검�
 | STEP 12 — Combat & Defense | Done | Spear/Shield, ATTACK/DEFEND/FLEE, Observation v4, schemaVersion 4 |
 | STEP 13 — Extended Genome Traits | Done | Strength/Aggression/Caution/ToolAffinity, 정책 bias, 세대 평균, 저장 기본값 |
 | STEP 14 — Persistence & Learning Integration | Done | 스키마 호환, Q 진단, Action 분석, Seed/정책 비교, 3D 행동 대상 |
+| STEP 15 — Single Agent Behavior Lab | Done | mode·단일 개체·유전/교배/전투/에이전트 감지 게이트·Lab UI·schema v5·Ecology↔Lab agentCount 왕복 복원 |
+| STEP 16 — Interactable Environment & RL Options | Done | Door/Switch/Box + Observation cue + Settings interactSuccess + Lab 검사 패널 + interact 통계 |
+| STEP 17 — Humanoid Rig & Motion | Done | 인간형 리그·필수 모션·시뮬 이벤트 매핑·브라우저 스모크 검증 |
+| STEP 18 — Habitable Behavior Arena | Done | Lab scene·humanoid·close cam·LabLights. Ecology 보존 |
+| STEP 19 — Human Drives & Tradeoffs | Done | Lab 전용 fatigue/curiosity/comfort + drive bias/보상. Ecology 스키마 안전 |
+| STEP 20 — Trajectory & Motion Fidelity | Done | survival vs non-survival trajectory UI + walk/run·drive gesture 모션 |
+| STEP 21 — Real Human Render & Drive Learning | Done | 진짜 사람 렌더 + drive 관찰/보상으로 인간다운 선택 학습 |
+| STEP 22 — Natural Behavior Change Visibility | Done | close-cam textured human + `lab:probe` early→late + trail/UI; Ecology green |
+| STEP 23 — Conditioned Behavior Lab | Done | 3-chamber lab + `labCondition` presets + apparatus/food readability; Ecology green |
 
-**현재 다음 작업:** 출고 이후 성능 관찰은 유지한다. 방문 상태가 개체당 수천을 넘고 학습이 수렴하지 않는다는 측정이 나오기 전에는 PPO로 바꾸지 않는다. 50개체 이상에서 병목이 측정되면 InstancedMesh 또는 Worker를 재검토한다.
+**현재 다음 작업:** Buffer — regressions / probe under non-baseline conditions / whatever still feels unreadable.
 
 **STEP 14 구현 메모**
 - `actionSchemaVersion` 3, `observationSchemaVersion` 4를 ExperimentRecord와 각 SerializedBrain에 기록한다. 키 토큰 수와 행 길이가 버전과 맞는지 검사한다.
@@ -1376,10 +1413,10 @@ useSimulationLoop
 [MOVE_FORWARD, TURN_LEFT, TURN_RIGHT, EAT, REST, PICK_UP, GATHER, ATTACK, DEFEND, FLEE]
 ```
 
-현재 Observation v4 키:
+현재 Observation v5 키:
 
 ```text
-energy|hunger|foodDirection|foodDistance|obstacleAhead|terrain|terrainAhead|forage|nearbyTool|heldTool|agentDirection|agentDistance|health
+energy|hunger|foodDirection|foodDistance|obstacleAhead|terrain|terrainAhead|forage|nearbyTool|heldTool|agentDirection|agentDistance|health|interactable
 ```
 
 ### 17.3.2 Terrain
@@ -1494,11 +1531,12 @@ CombatOutcome
 | agentDirection | none / forward / back / left / right | 12 (v4) |
 | agentDistance | close / mid / far / out. close는 현재 공격 사거리 | 12 (v4) |
 | health | low / mid / high | 12 (v4) |
+| interactable | none / switch\|door\|box\|rest _{close\|fwd\|oth} | 16 (v5) |
 
-키 예(v4):
+키 예(v5):
 
 ```text
-mid|high|forward|close|no|forest|spear|left|mid|high
+mid|high|forward|close|no|forest|forest|none|spear|none|left|mid|high|switch_fwd
 ```
 
 ### 17.3.8 Action Mask
@@ -1564,6 +1602,8 @@ ActionOutcomeEvent
 | STEP 10 지형 | 360×5×5 = 9,000 | 5 | 45,000 |
 | STEP 11 도구 | 9,000×7×3×5 = 945,000 | 7 | 6,615,000 |
 | STEP 12 전투 | 945,000×(5/3)×(9/5)×5×4×3 = 170,100,000 | 10 | 1,701,000,000 |
+| STEP 16 interactable cue | 170,100,000×10 = 1,701,000,000 | 10 | 17,010,000,000 |
+| STEP 18 rest cue | 170,100,000×13 = 2,211,300,000 | 10 | 22,113,000,000 |
 
 밀집 배열로 미리 할당하면 안 된다. 현재처럼 방문 상태만 `Map`에 넣고, 행 배열 길이는 그 시점 `AGENT_ACTIONS.length`와 같게 둔다.
 
@@ -1578,10 +1618,10 @@ ActionOutcomeEvent
 
 ## 17.5 저장 데이터 호환성 및 Migration
 
-### 17.5.1 현재 저장 형태 (schemaVersion 2)
+### 17.5.1 현재 저장 형태 (schemaVersion 6)
 
-- 상수: `EXPERIMENT_SCHEMA_VERSION = 4`, IndexedDB `EXPERIMENT_DB_VERSION = 1`, DB 이름 `artificial-life-simulator`.
-- schemaVersion 1 기록은 `migrateExperimentRecord`가 지형·seed·Q 초기화를 채운 뒤 2로 올린다.
+- 상수: `EXPERIMENT_SCHEMA_VERSION = 6`, IndexedDB `EXPERIMENT_DB_VERSION = 1`, DB 이름 `artificial-life-simulator`.
+- schemaVersion 1 기록은 `migrateExperimentRecord`가 지형·seed·Q 초기화를 채운 뒤 상위 버전으로 올린다. v4→v5는 `WorldConfig.mode`를 채운다(기본 `ecology`). v5→v6는 Observation v5(`interactable` cue)로 Q-Table을 초기화한다.
 - 실험 기록: `worldConfig`, `learningConfig`, `rewardConfig`, `evolutionConfig`, `world`, `brains`, `learningHistory`, `generationHistory`, `statistics`.
 - `actionSchemaVersion` / `observationSchemaVersion`은 0.15.0부터 기록한다. 없는 v1 데이터는 읽기 때 1로 채운다.
 - 이동 경로는 저장하지 않고 복원 후 다시 만든다.
@@ -1788,4 +1828,183 @@ schemaVersion 1 기록에 없는 확장 필드:
 - 모든 프레임에서 React 전체 상태를 갱신하지 않는다. 이벤트·Q-Table·링 버퍼는 렌더 상태 밖에 둔다.
 - 기존 1–16장과 충돌하면 이 장이 확장 설계의 기준이다. 이미 완료된 STEP 1–8 요구사항은 삭제하지 않는다.
 
+---
+
+# 18. Human Behavior Lab — 단일 개체 행동 실험실
+
+> **문서 범위:** Ecology 모드를 보존한 채, 강화학습으로 행동 전략이 바뀌는 단일 인간형 개체를 관찰하는 별도 모드다. STEP 15–17로 나눈다. 구현 세션은 완료 조건을 검증한 뒤에만 `Done`으로 바꾼다.
+>
+> **설계 원칙:** 정책은 고수준 행동 옵션을 고르고, 이동·상호작용·애니메이션 컨트롤러가 실행한다. Tabular Q-Learning을 우선 재사용한다. Observation/Action을 무작정 늘리지 않는다. Ecology 실험·Q-Table을 조용히 버리지 않는다.
+
+## 18.1 모드 규칙
+
+| 항목 | Ecology | Human Behavior Lab |
+|---|---|---|
+| 활성 Agent 수 | 1–50 | 항상 1 |
+| Genetics / mating / reproduction | 설정에 따름 | 차단 |
+| Lifespan / 노화 사망 | 유전 On일 때 | 차단 |
+| Combat / agent sensing·reward | 사용 | 차단 |
+| 기본 생존 | 기존 규칙 | Sandbox(조기 단순 사망 최소화). 사망 허용은 이후 선택 설정 |
+| 새 세션 기본 mode | `ecology` | 사용자가 선택. 기존 실험 mode를 추측해 바꾸지 않음 |
+| 저장 | `WorldConfig.mode` | 동일 필드. 없으면 마이그레이션 시 `ecology` |
+
+`EXPERIMENT_SCHEMA_VERSION = 5`. mode만 채울 때는 Q-Table을 유지한다. Action/Observation 스키마는 STEP 15에서 바꾸지 않는다.
+
+구현 위치(현재): `src/simulation/labMode.ts`, `WorldConfig.mode`, `engine.ts` 게이트, Settings/Header UI, migrate/validation.
+
+## 18.2 STEP 15 — Single Agent Behavior Lab
+
+**상태:** Done (0.23.0)
+
+**목표:** 모드 타입/설정/화면을 분리하고, Lab에서 Agent 1개와 금지 규칙 게이트를 보장한다.
+
+**완료 조건**
+- Ecology ↔ Lab 왕복 시 Ecology 기능·저장 데이터 회귀 없음
+- Lab에서 Agent 정확히 1개
+- Lab에서 genetics/mating/reproduction/lifespan death/combat/agent-to-agent sensing·reward가 실행되지 않음
+- Lab에서 **모든 사망 경로 비활성** (`allowsDeath=false`): 에너지/체력 고갈·노화·전투 모두 개체를 죽이지 않음. `keepLabAgentAlive`가 health floor로 유지. Ecology 사망 규칙은 유지
+- 저장/복원 시 mode 보존. 구기록은 `ecology`로 채움
+
+**검증됨:** mode 필드, agentCount=1 clamp, sanitize trim, engine mating/combat skip, Action Mask combat 제외, Observation `allowsAgentSensing` 게이트(Lab에서 agentDirection=`none` / agentDistance=`out`), Lab UI에서 전투 보상·인구·창/방패·진화 숨김, store Ecology↔Lab `agentCount` 왕복 복원, schema v5 마이그레이션(Q 유지), Lab 불멸(장시간 tick·sanitize revive).
+
+## 18.3 STEP 16 — Interactable Environment & RL Behavior Options
+
+**상태:** Done
+
+**목표:** Interactable/affordance 프레임워크와 Door·Switch·Movable Box(우선 2–3종) end-to-end. 고수준 옵션 + navigation/interaction controller. 실제 결과 기반 reward·mask·timeline. 기존 Q-Learning 재사용.
+
+**완료 조건:** 탐지·접근·상호작용으로 월드 상태가 바뀌고, Q-update/reward가 실제 결과를 반영하며, Random/Frozen Q 비교가 가능하다.
+
+**구현 메모 (0.24.0–0.27.0):**
+- `WorldState.interactables` + kinds `door` | `switch` | `movable_box` (+ STEP 18 `rest_bed`).
+- Lab만 Switch+닫힌 Door+Movable Box(+ rest bed) 시드. Ecology는 `[]`. 구 세이브는 migrate/sanitize로 `[]`.
+- Action 스키마 유지. 스위치 토글·상자 push·rest bed는 인근 `GATHER`로 처리(채집 → 스위치 → 상자 → bed 우선순위). 전용 `INTERACT` Action은 의도적 후속(필수 아님).
+- Observation v5: 키 뒤에 `interactable` 토큰(13값: `none` / `{switch\|door\|box\|rest}_{close\|fwd\|oth}`). 이론 상태 공간 2,211,300,000. experiment schemaVersion 6 유지(어휘 확장·토큰 수 동일).
+- 닫힌 Door·상자는 `isBlockedWorldPosition`에 실제 충돌. Switch 토글 → linked Door `open` 동기화. Box push는 facing 방향으로 `BOX_PUSH_DISTANCE` 이동(목적지 차단 시 실패·무보상).
+- `RewardConfig.interactSuccess`(+ Settings UI), outcome `interactAttempts/Successes`(+ Learning Dashboard), Action Timeline targetKind=`switch`|`movable_box`.
+- 3D: `Interactables.tsx` Door/Switch/Box 메시 + 클릭 선택. Lab 검사 패널은 open/on/linked door/position을 표시.
+- Random/Frozen Q 비교는 기존 Learning Off + Experiments 정책 비교 경로를 재사용한다.
+
+## 18.4 STEP 17 — Humanoid Rig & Motion System
+
+**상태:** Done
+
+**목표:** 인간형 리그/모델, 필수 모션, 시뮬 행동 이벤트 → Animation State 매핑. 시뮬 timestep과 렌더 분리.
+
+**완료 조건:** 구현된 행동이 자연스럽게 전환되고 월드 결과와 모션이 일치한다. 정지 중 발 미끄러짐·순간 회전·손-대상 큰 불일치·액션 떨림이 없다.
+
+**구현 메모 (0.28.0–0.32.0):**
+- `src/render/agentMotion.ts`: 순수 매핑 `lastAction` → `idle` \| `walk` \| `turnLeft` \| `turnRight` \| `gather` \| `eat` \| `attack` \| `defend` \| `dead`. MOVE_FORWARD/FLEE→walk, TURN_LEFT/RIGHT→turnLeft/Right, GATHER/PICK_UP→gather, EAT→eat, ATTACK→attack, DEFEND→defend. phase는 walk·gather·attack에서만 렌더 dt로 진행(idle/turn/eat/defend/dead에서 발 순환 정지).
+- `stepHeldMotion`: turnLeft/Right·gather/eat/attack/defend를 ~0.35s 홀드(안티지터). walk·dead는 즉시 중단.
+- `computeLocalReachAim` + LimbPose `shoulderY`: gather/attack이 래치된 `actionTarget` xz를 향해 상완 yaw·reach 보정(eat/defend는 자체 포즈 유지).
+- LimbPose `torsoY` / `leftHipY` / `rightHipY`: TURN 시 몸통 리드 트위스트 + 발 카운터 트위스트(planted).
+- `src/components/world/HumanoidRig.tsx`: placeholder 이족 리그(허벅지/정강이/발, 상완/전완, 몸통 bob·yaw). `AgentMesh`가 기존 캡슐 피규어 대신 사용.
+- yaw는 `blendAngle`(출력 [-π,π] 정규화), 월드 xz는 `blendPosition`(walk soft-follow, planted 즉시 스냅)으로 렌더 처리. 시뮬 위치·회전 권위 유지.
+- Agent 루트 `name`/`userData` + `agent-body` 태그. DEV에서 `window.__ALS_STORE__`로 headed 스모크 가능.
+- 감정/의식 미터 없음. Ecology baselines·interactable·Action/Observation 스키마 변경 없음.
+- 검증(0.32.0): headed Chromium 씬 프로브 — planted dist=0, TURN torsoY=±0.42+발 카운터, walk swing, gather/attack aim yaw, action hold, yaw wrap. `npm test` 127 passed, `npm run build` 성공.
+
+## 18.5 구현 제약
+
+- STEP 15 → 16 → 17 순서. 한 세션에 전체를 넣지 않는다.
+- Ecology 코드·실험·Q-Table을 이유 없이 대규모 재작성하지 않는다.
+- PPO/DQN 교체는 측정 근거가 있을 때만 제안한다.
+- 컨텍스트 절반(또는 vertical slice / 소작업 3 / 파일 6) 도달 시 `docs/CURSOR_SESSION_STATE.md`에 기록하고 중단한다.
+
+---
+
+# 19. HBL — One Human Learning Space (STEP 18–20)
+
+> **핵심:** Lab=**사람 1명**. 배경·안개·조명·바닥은 Ecology(숲/초원)와 **다른 세트**. 나무/돌/채집 제거. 인간 학습 프롭만. **사람 메시/머티리얼/모션은 가용 WebGL 기술 최대한** 실사에 가깝게. Ecology 유지. 감정 미터 금지.
+
+## 19.1 STEP 18 — Habitable Behavior Arena
+
+**상태:** Done
+
+**목표:** Lab 전용 장면 세트(비생태 배경/조명/바닥) + 생태 메시 스킵 + 인간 affordance. 사람 카메라.
+
+**진행:** rest_bed+pads + Lab scene + LabFigure + close cam/LabLights Done.
+
+**완료 조건:** Lab이 한눈에 다른 공간 + 사람 중심 + Ecology 회귀 없음. ✅
+
+## 19.2 STEP 19 — Human Drives & Anti-survival Tradeoffs
+
+**상태:** Done
+
+**목표:** Lab 전용 drive(피로/호기심/안락 등)와 보상 경쟁. drive 충족이 생존 지표를 깎을 수 있게 한다.
+
+**진행:** Lab-only fatigue/curiosity/comfort tick + rest_bed/lookout GATHER bias·explore weight + interact 보상. Ecology는 drive 필드 없음.
+
+**완료 조건:** drive가 선택·보상에 실제 반영. 학습 On에서 비생존 선택이 측정 가능. Ecology 개체 스키마 깨지 않음. ✅
+
+## 19.3 STEP 20 — Trajectory Visibility & Motion Fidelity
+
+**상태:** Done
+
+**목표:** 생존 vs 비생존 궤적 UI + **가까운 시점에서** walk/run/laugh/cry 등 인간 모션이 구분되게.
+
+**진행:** Learning trajectory 필터(Eat vs rest/lookout) + FLEE/high-speed→run + drive-based slump/positive gesture. 감정 미터 UI 없음.
+
+**완료 조건:** Lab 카메라로 행동 읽힘. 모션↔시뮬 일치. 감정 미터 UI 없음. ✅
+
+## 19.4 제약
+
+- STEP 18 → 19 → 20. 세션당 1 vertical slice.
+- 세션 산출물(`CURSOR_SESSION_STATE.md` Next Task)은 짧게.
+
+---
+
+# 20. HBL Fidelity — Real Human + Natural Learning (STEP 21–22)
+
+> **북극성:** (1) Lab close-cam에서 **진짜 사람**처럼 보인다 (캡슐 콜라주 실패). (2) 학습 On에서 **생존 ↔ 인간다운(rest/lookout 등)** 선택이 시간에 따라 자연스럽게 바뀐다. `npm run lab:probe`로 Learning vs Frozen 비교. Ecology 무변경. PPO/감정 미터 금지.
+>
+> **창의성:** 세션 에이전트는 티켓 기계가 아니다. “뭐가 더 사람 같고, 공간이/사물이 학습을 돕게 만드나?”를 스스로 판단한다. GLTF 인간, Lab 존/조명/프롭 재배치, 의미 있는 interactable, observation·보상·커리큘럼 개편 등 **북극성을 앞당기는 더 나은 수**면 Queue 문구를 업그레이드해도 된다. Ecology는 성역.
+
+## 20.1 STEP 21 — Real Human Render & Drive Learning
+
+**상태:** Done
+
+**목표:** Lab 인간 렌더를 실사/고품질 인간 메시 경로로 교체(GLTF 등 허용). Drive를 observation·보상·편향에 제대로 넣어 인간다운 선택이 학습되게 한다.
+
+**완료:** Lab Mixamo GLTF + 3-zone arena. Observation v6 `drive` cue(tired/curious/surv/calm/na) + match/approach bias + drive reward shaping. Arena midpoint spawn. `lab:probe` Learning driveRate ≥ Frozen.
+
+**완료 조건:**
+- close-cam에서 Lab 인물이 사람으로 읽힘 (EcologyFigure 유지).
+- drive 상태가 학습 상태에 반영되고 `lab:probe`에서 Learning driveRate ≥ Frozen.
+- Ecology 회귀 없음.
+
+## 20.2 STEP 22 — Natural Behavior Change Visibility
+
+**상태:** Done
+
+**목표:** 짧은 실행(수분) 안에 행동 분포 변화가 보이고, UI/probe로 확인 가능.
+
+**완료:** Lab 커리큘럼 + `lab:probe` early→late(curriculumShift). Lab trail/UI(Eat vs rest/lookout). Smell-test: Vanguard armor → textured Mixamo human(Michelle) + albedo-preserving energy wash. Ecology 회귀 없음.
+
+**완료 조건:**
+- `lab:probe` + Learning UI가 생존 vs 인간다운 궤적을 실제 데이터로 보여 줌. ✅
+- STEP 21–22 Done. Ecology 보존. ✅
+
+---
+
+# 21. Conditioned Behavior Lab (STEP 23)
+
+> **북극성:** Lab은 추상 패드가 아니라 **조건이 있는 행동 실험실**이다. 생존↔rest/curiosity 북극성은 유지. 선택이 챔버·장치에서 읽힌다. Ecology 성역. PPO/감정 미터 금지.
+
+## 21.1 STEP 23 — Conditioned Behavior Lab
+
+**상태:** Done
+
+**목표:** vestibule + survival/rest/lookout 챔버로 공간을 재구성하고, 연구자 선택 `labCondition`으로 게이트·먹이·drive 압력을 바꾼다.
+
+**완료:**
+- `LAB_ARENA` 챔버 앵커, rest-gate door/switch, lookout-path crate, cot, observation booth.
+- `WorldConfig.labCondition`: baseline / food_scarce / rest_locked / curiosity_prime / tradeoff_hard.
+- Procedural `LabChamber` walls + shelf food packs + Settings condition UI.
+- Curriculum/reward rates multiply by condition effects. `lab:probe` uses baseline.
+
+**완료 조건:**
+- close-cam에서 Lab이 실험실(벽·챔버·장치)로 읽힘.
+- 조건 프리셋이 문/먹이/압력을 바꾸고 Settings에서 선택 가능.
+- `lab:probe` baseline 통과. Ecology 회귀 없음.
 

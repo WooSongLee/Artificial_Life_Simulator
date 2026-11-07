@@ -5,6 +5,8 @@ import type { WorldObject, WorldState } from '../types/world'
 import { clamp, clampStat, finiteNumber, wrapAngle } from '../utils/math'
 import { clampWorldConfig } from './constants'
 import { sanitizeEquipment, sanitizeForageNode, sanitizeWorldTool } from './forage'
+import { sanitizeInteractables } from './interactables'
+import { enforceLabPopulation } from './labMode'
 import { sanitizeOutcomeStats } from './outcomes'
 import { generateTerrainGrid, isValidTerrainGrid } from './terrain'
 
@@ -70,7 +72,7 @@ export function sanitizeWorld(world: WorldState): WorldState {
     ? world.terrain
     : generateTerrainGrid(config)
 
-  return {
+  return enforceLabPopulation({
     ...world,
     config,
     terrain,
@@ -83,8 +85,9 @@ export function sanitizeWorld(world: WorldState): WorldState {
     objects: world.objects.map(sanitizeObject),
     forageNodes: (world.forageNodes ?? []).map(sanitizeForageNode),
     worldTools: (world.worldTools ?? []).map(sanitizeWorldTool),
+    interactables: sanitizeInteractables(world.interactables),
     agents: world.agents.map(sanitizeAgent),
-  }
+  })
 }
 
 function sanitizeActionTarget(value: Agent['actionTarget']): Agent['actionTarget'] {

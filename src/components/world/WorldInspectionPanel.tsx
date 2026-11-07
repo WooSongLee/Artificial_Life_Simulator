@@ -1,6 +1,7 @@
 import { useThrottledStore } from '../../hooks/useThrottledStore'
 import { useSimulationStore } from '../../store/useSimulationStore'
 import { AgentInspection } from '../panels/AgentInspection'
+import { InteractableInspection } from '../panels/InteractableInspection'
 import { ObjectInspection } from '../panels/ObjectInspection'
 import { ForageInspection, ToolInspection } from '../panels/ForageInspection'
 
@@ -26,9 +27,22 @@ export function WorldInspectionPanel() {
     150,
     selectedObjectId,
   )
+  const selectedInteractable = useThrottledStore(
+    (state) =>
+      (state.world.interactables ?? []).find((item) => item.id === state.selectedObjectId) ?? null,
+    150,
+    selectedObjectId,
+  )
+  const interactables = useThrottledStore((state) => state.world.interactables ?? [], 150, selectedObjectId)
   const selectObject = useSimulationStore((state) => state.selectObject)
 
-  if (!selectedAgent && !selectedObject && !selectedForage && !selectedTool) {
+  if (
+    !selectedAgent &&
+    !selectedObject &&
+    !selectedForage &&
+    !selectedTool &&
+    !selectedInteractable
+  ) {
     return null
   }
 
@@ -53,6 +67,8 @@ export function WorldInspectionPanel() {
           <ForageInspection node={selectedForage} />
         ) : selectedTool ? (
           <ToolInspection tool={selectedTool} />
+        ) : selectedInteractable ? (
+          <InteractableInspection item={selectedInteractable} interactables={interactables} />
         ) : null}
       </div>
     </aside>

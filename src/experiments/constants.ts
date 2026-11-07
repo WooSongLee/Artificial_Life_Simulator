@@ -1,4 +1,4 @@
-export const EXPERIMENT_SCHEMA_VERSION = 4
+export const EXPERIMENT_SCHEMA_VERSION = 6
 export const EXPERIMENT_DB_NAME = 'artificial-life-simulator'
 export const EXPERIMENT_DB_VERSION = 1
 export const EXPERIMENT_STORE = 'experiments'

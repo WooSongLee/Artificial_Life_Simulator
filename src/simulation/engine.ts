@@ -1,4 +1,4 @@
-import { DEFAULT_EVOLUTION_CONFIG, isGeneticsEnabled } from '../evolution/constants'
+import { DEFAULT_EVOLUTION_CONFIG } from '../evolution/constants'
 import { processMating, type MatingTickResult } from '../evolution/mating'
 import type { EvolutionConfig } from '../evolution/types'
 import { DEFAULT_LEARNING_CONTEXT, type LearningStepContext } from '../learning/controller'
@@ -6,9 +6,15 @@ import type { Agent } from '../types/agent'
 import type { SimulationSnapshot } from '../types/simulation'
 import type { Rng } from '../utils/random'
 import { beginAgentTick, finishAgentTick, overlayAgents, respawnFood } from './agentSystem'
-import { resolveCombatTick } from './combat'
+import { resolveCombatTick, type CombatTickResult } from './combat'
 import { regenerateForage, removeWorldTool, replaceForageNode } from './forage'
-import { addOutcomeStats, createEmptyOutcomeStats } from './outcomes'
+import {
+  allowsCombat,
+  allowsMating,
+  clampSimulationMode,
+  effectiveGeneticsEnabled,
+} from './labMode'
+import { addOutcomeStats, createEmptyOutcomeStats, isDriveTargetKind } from './outcomes'
 
 export interface SimulationStepContext extends Omit<LearningStepContext, 'rng'> {
   evolutionConfig?: EvolutionConfig
@@ -30,16 +36,19 @@ export function stepSimulation(
   const objects = snapshot.world.objects.slice()
   let forageNodes = snapshot.world.forageNodes.slice()
   let worldTools = snapshot.world.worldTools.slice()
+  let interactables = (snapshot.world.interactables ?? []).slice()
   const plans = []
   const plannedAgents: Agent[] = []
   const evolutionConfig = context.evolutionConfig ?? DEFAULT_EVOLUTION_CONFIG
+  const mode = clampSimulationMode(snapshot.world.config.mode)
+  const geneticsEnabled = effectiveGeneticsEnabled(mode, evolutionConfig.geneticsEnabled)
   const learningContext = {
     learningEnabled: context.learningEnabled,
     learningConfig: context.learningConfig,
     rewardConfig: context.rewardConfig,
     rng: context.rng ?? Math.random,
     tick: snapshot.tick + 1,
-    geneticsEnabled: isGeneticsEnabled(evolutionConfig.geneticsEnabled),
+    geneticsEnabled,
   }
 
   for (const agent of snapshot.world.agents) {
@@ -48,6 +57,7 @@ export function stepSimulation(
       objects,
       forageNodes,
       worldTools,
+      interactables,
       agents: overlayAgents(snapshot.world.agents, plannedAgents),
     }
     const plan = beginAgentTick(agent, worldView, dt, learningContext)
@@ -66,16 +76,27 @@ export function stepSimulation(
     if (plan.gatheredNode) {
       forageNodes = replaceForageNode(forageNodes, plan.gatheredNode)
     }
+    if (plan.interactables) {
+      interactables = plan.interactables
+    }
     for (const dropped of plan.droppedTools) {
       worldTools = [...worldTools, dropped]
     }
   }
 
-  const combat = resolveCombatTick(
-    plans.flatMap((plan) => (plan.attackIntent ? [plan.attackIntent] : [])),
-    plannedAgents,
-    snapshot.tick + 1,
-  )
+  const combat: CombatTickResult = allowsCombat(mode)
+    ? resolveCombatTick(
+        plans.flatMap((plan) => (plan.attackIntent ? [plan.attackIntent] : [])),
+        plannedAgents,
+        snapshot.tick + 1,
+      )
+    : {
+        agents: plannedAgents,
+        droppedTools: [],
+        hits: [],
+        hitsByAttacker: new Map(),
+        hitsByDefender: new Map(),
+      }
   for (const dropped of combat.droppedTools) {
     if (worldTools.some((tool) => tool.id === dropped.id)) continue
     worldTools = [...worldTools, dropped]
@@ -87,6 +108,7 @@ export function stepSimulation(
     objects,
     forageNodes,
     worldTools,
+    interactables,
     agents: combat.agents,
   }
   let outcomeStats = snapshot.world.outcomeStats ?? createEmptyOutcomeStats()
@@ -94,13 +116,19 @@ export function stepSimulation(
     const result = finishAgentTick(plan, combat, resolvedWorld, learningContext)
     agents.push(result.agent)
     const action = plan.decision?.selection.action
+    const interacted = result.interactedId !== null
     outcomeStats = addOutcomeStats(outcomeStats, {
       foodEaten: plan.ate ? 1 : 0,
       resourcesGathered: result.gatheredAmount,
       toolPickupAttempts: action === 'PICK_UP' ? 1 : 0,
       toolPickupSuccesses: result.pickedUpToolId ? 1 : 0,
-      gatherAttempts: action === 'GATHER' ? 1 : 0,
+      gatherAttempts: action === 'GATHER' && !interacted ? 1 : 0,
       gatherSuccesses: result.gatheredAmount > 0 ? 1 : 0,
+      interactAttempts: interacted ? 1 : 0,
+      interactSuccesses: interacted ? 1 : 0,
+      drivePicks: isDriveTargetKind(result.targetKind) ? 1 : 0,
+      // Lab survival signal: explicit EAT or auto-eat when food is reached.
+      survivalPicks: action === 'EAT' || plan.ate ? 1 : 0,
       damageDealt: result.damageDealt,
       damageReceived: result.damageTaken,
       attackAttempts: action === 'ATTACK' ? 1 : 0,
@@ -115,17 +143,31 @@ export function stepSimulation(
 
   const afterSpawn = respawnFood(objects, snapshot.world, dt)
   const afterForage = regenerateForage(forageNodes, snapshot.world, dt)
+  const nextWorld = {
+    ...snapshot.world,
+    agents,
+    objects: afterSpawn.objects,
+    forageNodes: afterForage.forageNodes,
+    worldTools,
+    interactables,
+    foodSpawnCooldown: afterSpawn.foodSpawnCooldown,
+    forageSpawnCooldown: afterForage.forageSpawnCooldown,
+    outcomeStats,
+  }
+
+  if (!allowsMating(mode) || !geneticsEnabled) {
+    return {
+      tick: snapshot.tick + 1,
+      world: nextWorld,
+      born: [],
+      recordedGeneration: null,
+      recordedGenerationStartTick: null,
+      removedAgentIds: [],
+    }
+  }
+
   const reproduced = processMating(
-    {
-      ...snapshot.world,
-      agents,
-      objects: afterSpawn.objects,
-      forageNodes: afterForage.forageNodes,
-      worldTools,
-      foodSpawnCooldown: afterSpawn.foodSpawnCooldown,
-      forageSpawnCooldown: afterForage.forageSpawnCooldown,
-      outcomeStats,
-    },
+    nextWorld,
     snapshot.tick + 1,
     evolutionConfig,
     context.rng ?? Math.random,

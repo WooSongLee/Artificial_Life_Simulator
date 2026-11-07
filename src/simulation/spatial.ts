@@ -9,6 +9,12 @@ import {
   TREE_COLLISION_RADIUS,
   WORLD_EDGE_MARGIN,
 } from './constants'
+import {
+  closedDoorBlocksPosition,
+  labFacilityBlocksPosition,
+  movableBoxBlocksPosition,
+} from './interactables'
+import { isHumanBehaviorLab, clampSimulationMode } from './labMode'
 import { isTerrainWalkable } from './terrain'
 
 export interface ClusterCenter {
@@ -65,13 +71,18 @@ export function isBlockedSpawn(
 export function isBlockedWorldPosition(
   x: number,
   z: number,
-  world: Pick<WorldState, 'objects' | 'terrain' | 'config'>,
+  world: Pick<WorldState, 'objects' | 'terrain' | 'config' | 'interactables'>,
   radius = AGENT_RADIUS,
+  excludeInteractableId?: string,
 ): boolean {
+  const lab = isHumanBehaviorLab(clampSimulationMode(world.config.mode))
   return (
     !isInsideWorld(x, z, world.config.size) ||
-    !isTerrainWalkable(world.terrain, x, z, world.config.size) ||
-    collidesWithObstacles(x, z, radius, world.objects)
+    (!lab && !isTerrainWalkable(world.terrain, x, z, world.config.size)) ||
+    (lab && labFacilityBlocksPosition(x, z, radius)) ||
+    collidesWithObstacles(x, z, radius, world.objects) ||
+    closedDoorBlocksPosition(x, z, radius, world.interactables) ||
+    movableBoxBlocksPosition(x, z, radius, world.interactables, excludeInteractableId)
   )
 }
 
