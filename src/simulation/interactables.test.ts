@@ -705,7 +705,10 @@ describe('interactables STEP 16 slice', () => {
     const ecoAgent = ecology.agents[0]!
     const ecoObs = observeAgent(ecoAgent, ecology)
     expect(ecoObs.interactable).toBe('none')
-    expect(encodeObservation(ecoObs).split('|')).toHaveLength(15)
+    expect(encodeObservation(ecoObs).split('|')).toHaveLength(18)
+    expect(ecoObs.env).toBe('na')
+    expect(ecoObs.labObject).toBe('na')
+    expect(ecoObs.heldLab).toBe('na')
 
     const base = labWorld()
     const onlySwitch: SwitchInteractable = {

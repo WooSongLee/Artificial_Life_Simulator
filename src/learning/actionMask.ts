@@ -1,6 +1,11 @@
 import { canAttemptAttack, canDefendOrFlee } from '../simulation/combat'
 import { findGatherableNode, findPickupTool } from '../simulation/forage'
 import { canInteractGatherTarget } from '../simulation/interactables'
+import {
+  canConsumeLabFood,
+  canPickOrDropLabObject,
+  canUseLabGatherTarget,
+} from '../simulation/labObjectRuntime'
 import { allowsCombat, clampSimulationMode } from '../simulation/labMode'
 import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
@@ -12,14 +17,20 @@ const ALWAYS_LEGAL: readonly AgentAction[] = ['MOVE_FORWARD', 'TURN_LEFT', 'TURN
 
 export function legalActionsFor(agent: Agent, world: WorldState): AgentAction[] {
   const legal = [...ALWAYS_LEGAL]
-  if (findFoodInEatRange(agent, world.objects)) {
+  if (findFoodInEatRange(agent, world.objects) || canConsumeLabFood(agent, world.labObjects ?? [])) {
     legal.push('EAT')
   }
-  if (findPickupTool(agent, world)) {
+  if (findPickupTool(agent, world) || canPickOrDropLabObject(agent, world.labObjects ?? [])) {
+    // Env-P2: PICK_UP also drives Lab held-slot pick/drop for food_item.
     legal.push('PICK_UP')
   }
-  if (findGatherableNode(agent, world) || canInteractGatherTarget(agent, world)) {
+  if (
+    findGatherableNode(agent, world) ||
+    canInteractGatherTarget(agent, world) ||
+    canUseLabGatherTarget(agent, world.labObjects ?? [])
+  ) {
     // STEP 16: reuse GATHER for switch toggle / box push (no Action schema bump).
+    // Env-P1/P2: same GATHER path drives catalog Lab object affordances.
     legal.push('GATHER')
   }
   if (allowsCombat(clampSimulationMode(world.config.mode))) {

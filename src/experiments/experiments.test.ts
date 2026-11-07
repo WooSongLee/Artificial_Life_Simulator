@@ -266,7 +266,7 @@ describe('experiment save/load', () => {
   it('pads Q-tables when only newer actions were appended', () => {
     const record = snapshotWorld()
     const currentKey =
-      'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high|none|na'
+      'mid|high|forward|close|no|grassland|grassland|none|none|none|none|out|high|none|na|na|na|na'
     const compatible = {
       ...record,
       actionSchemaVersion: 2,
@@ -361,7 +361,7 @@ describe('experiment save/load', () => {
     expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
     expect(migrated.qTableStatus).toBe('reset')
     expect(migrated.brains[0]?.qTable).toEqual([])
-    expect(migrated.qTableResetReason).toMatch(/v4 → v[56]/)
+    expect(migrated.qTableResetReason).toMatch(/v4 → v\d+/)
     expect(migrated.migrationWarnings.some((warning) => warning.includes('Simulation mode'))).toBe(true)
   })
 
@@ -385,7 +385,7 @@ describe('experiment save/load', () => {
     expect(migrated.observationSchemaVersion).toBe(OBSERVATION_SCHEMA_VERSION)
     expect(migrated.qTableStatus).toBe('reset')
     expect(migrated.brains[0]?.qTable).toEqual([])
-    expect(migrated.qTableResetReason).toMatch(/v4 → v[56]/)
+    expect(migrated.qTableResetReason).toMatch(/v4 → v\d+/)
   })
 
   it('preserves Lab mode through JSON save and schema v5→v6 migrate', () => {

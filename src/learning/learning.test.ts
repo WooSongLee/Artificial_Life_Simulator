@@ -18,6 +18,7 @@ import {
   APPROACH_FOOD_REWARD,
   CORRECT_TURN_REWARD,
   computeReward,
+  computeRewardBreakdown,
   SPIN_OSCILLATION_PENALTY,
   survivalSeekReward,
   WRONG_TURN_PENALTY,
@@ -126,9 +127,12 @@ describe('q-learning update', () => {
 
     const brain = getBrain(agent.id)
     expect(brain?.qTable.size).toBe(1)
-    expect(encodeObservation(observeAgent(agent, world)).split('|')).toHaveLength(15)
+    expect(encodeObservation(observeAgent(agent, world)).split('|')).toHaveLength(18)
     expect(decodeObservation(encodeObservation(observeAgent(agent, world)))?.heldTool).toBe('none')
     expect(decodeObservation(encodeObservation(observeAgent(agent, world)))?.drive).toBe('na')
+    expect(decodeObservation(encodeObservation(observeAgent(agent, world)))?.env).toBe('na')
+    expect(decodeObservation(encodeObservation(observeAgent(agent, world)))?.labObject).toBe('na')
+    expect(decodeObservation(encodeObservation(observeAgent(agent, world)))?.heldLab).toBe('na')
   })
 
   it('does not store invalid state keys and does not update masked actions', () => {
@@ -239,7 +243,12 @@ describe('q-learning update', () => {
     expect(decision.legalActions).toContain('GATHER')
     expect(decision.selection.action).toBe('GATHER')
     expect(decision.selection.explored).toBe(false)
-    expect(decision.stateKey.split('|').at(-1)).toBe('tired')
+    const tokens = decision.stateKey.split('|')
+    expect(tokens).toHaveLength(18)
+    expect(tokens.at(-4)).toBe('tired')
+    expect(tokens.at(-3)).toMatch(/^(day|nit)_/)
+    expect(tokens.at(-2)).not.toBe('na')
+    expect(tokens.at(-1)).toBe('none')
 
     const ecology = createInitialWorld({
       ...DEFAULT_WORLD_CONFIG,
@@ -248,6 +257,8 @@ describe('q-learning update', () => {
     })
     const eco = ecology.agents[0]!
     expect(observeDrive(eco)).toBe('na')
+    expect(observeAgent(eco, ecology).labObject).toBe('na')
+    expect(observeAgent(eco, ecology).heldLab).toBe('na')
     expect(driveActionBias(eco, ecology)[actionIndex('GATHER')]).toBe(0)
     expect(exploreWeightsFor(eco, ecology)).toBe(EXPLORE_ACTION_WEIGHTS)
   })
@@ -469,5 +480,56 @@ describe('reward calculation', () => {
         DEFAULT_REWARD_CONFIG,
       ),
     ).toBe(APPROACH_FOOD_REWARD)
+  })
+
+  it('exposes named reward component breakdown that sums to total', () => {
+    const breakdown = computeRewardBreakdown(
+      {
+        action: 'TURN_LEFT',
+        ate: true,
+        collided: true,
+        died: false,
+        energyBefore: 60,
+        hungerBefore: 50,
+        foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
+        fatigueBefore: 10,
+        curiosityBefore: 10,
+        comfortBefore: 80,
+        foodDirection: 'forward',
+        previousAction: 'TURN_RIGHT',
+      },
+      DEFAULT_REWARD_CONFIG,
+    )
+    expect(breakdown.components.eat).toBe(DEFAULT_REWARD_CONFIG.eatSuccess)
+    expect(breakdown.components.collision).toBe(DEFAULT_REWARD_CONFIG.collision)
+    expect(breakdown.components.spinPenalty).toBe(SPIN_OSCILLATION_PENALTY)
+    expect(breakdown.components.survivalSeek).toBe(WRONG_TURN_PENALTY)
+    expect(breakdown.total).toBe(
+      breakdown.components.eat +
+        breakdown.components.collision +
+        breakdown.components.spinPenalty +
+        breakdown.components.survivalSeek,
+    )
+    expect(computeReward(
+      {
+        action: 'TURN_LEFT',
+        ate: true,
+        collided: true,
+        died: false,
+        energyBefore: 60,
+        hungerBefore: 50,
+        foodInEatRange: false,
+        gatheredAmount: 0,
+        pickedUp: false,
+        fatigueBefore: 10,
+        curiosityBefore: 10,
+        comfortBefore: 80,
+        foodDirection: 'forward',
+        previousAction: 'TURN_RIGHT',
+      },
+      DEFAULT_REWARD_CONFIG,
+    )).toBe(breakdown.total)
   })
 })

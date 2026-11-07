@@ -60,6 +60,11 @@ export interface Agent {
   fatigue?: number
   curiosity?: number
   comfort?: number
+  /**
+   * Lab-only held LabObject instance id (Env-P2). Separate from Ecology `equipment`.
+   * Enables requiresHeldType chains (pick food → stove operate / table consume).
+   */
+  heldLabObjectId?: string | null
 }
 
 /** Lab survival vs drive mark for watchable trails (null = ordinary motion). */

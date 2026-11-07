@@ -1,5 +1,15 @@
 import { EFFICIENT_REST_ENERGY, URGENT_HUNGER } from './constants'
-import type { AgentAction, FoodDirection, RewardConfig, RewardContext } from './types'
+import {
+  REWARD_COMPONENT_KEYS,
+  type AgentAction,
+  type FoodDirection,
+  type RewardComponents,
+  type RewardConfig,
+  type RewardContext,
+} from './types'
+
+export type { RewardComponentKey, RewardComponents } from './types'
+export { REWARD_COMPONENT_KEYS } from './types'
 
 /** Lab drive relief reward units (compete with eatSuccess≈10 when drives high). */
 export const REST_FATIGUE_REWARD_UNIT = 0.1
@@ -93,70 +103,130 @@ function isOppositeTurn(action: AgentAction, previous: AgentAction | null | unde
  * Spin penalty only when food is sensed (do not punish blind explore L/R).
  * Approach / turn shaping requires hunger ≥ threshold.
  */
-export function survivalSeekReward(context: DriveRewardContext): number {
-  if (context.died || !hasLabDriveSnapshot(context)) return 0
+/** Spin vs approach/turn parts (sum equals `survivalSeekReward`). */
+export function survivalSeekParts(context: DriveRewardContext): {
+  spinPenalty: number
+  survivalSeek: number
+} {
+  if (context.died || !hasLabDriveSnapshot(context)) {
+    return { spinPenalty: 0, survivalSeek: 0 }
+  }
 
   const dir = context.foodDirection ?? 'none'
-  let reward = 0
+  let spinPenalty = 0
+  let survivalSeek = 0
 
   // Anti-spin only with a sensed food target — blind explore may legitimately L↔R.
   if (dir !== 'none' && isOppositeTurn(context.action, context.previousAction)) {
-    reward += SPIN_OSCILLATION_PENALTY
+    spinPenalty = SPIN_OSCILLATION_PENALTY
   }
 
-  if (context.hungerBefore < SURVIVAL_SEEK_HUNGER || dir === 'none') return reward
+  if (context.hungerBefore < SURVIVAL_SEEK_HUNGER || dir === 'none') {
+    return { spinPenalty, survivalSeek }
+  }
 
   if (context.action === 'MOVE_FORWARD' && dir === 'forward') {
-    reward += APPROACH_FOOD_REWARD
-    return reward
+    return { spinPenalty, survivalSeek: APPROACH_FOOD_REWARD }
   }
 
-  if (context.action !== 'TURN_LEFT' && context.action !== 'TURN_RIGHT') return reward
+  if (context.action !== 'TURN_LEFT' && context.action !== 'TURN_RIGHT') {
+    return { spinPenalty, survivalSeek }
+  }
 
   if (dir === 'forward') {
-    reward += WRONG_TURN_PENALTY
+    survivalSeek = WRONG_TURN_PENALTY
   } else if (dir === 'left') {
-    reward += context.action === 'TURN_LEFT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
+    survivalSeek = context.action === 'TURN_LEFT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
   } else if (dir === 'right') {
-    reward += context.action === 'TURN_RIGHT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
+    survivalSeek = context.action === 'TURN_RIGHT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
   } else if (dir === 'back') {
-    reward += context.action === 'TURN_LEFT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
+    survivalSeek = context.action === 'TURN_LEFT' ? CORRECT_TURN_REWARD : WRONG_TURN_PENALTY
   }
 
-  return reward
+  return { spinPenalty, survivalSeek }
 }
 
-export function computeReward(context: DriveRewardContext, config: RewardConfig): number {
-  let reward = 0
+export function survivalSeekReward(context: DriveRewardContext): number {
+  const parts = survivalSeekParts(context)
+  return parts.spinPenalty + parts.survivalSeek
+}
+
+export interface RewardBreakdown {
+  total: number
+  components: RewardComponents
+}
+
+export function emptyRewardComponents(): RewardComponents {
+  return {
+    eat: 0,
+    gather: 0,
+    pickup: 0,
+    interact: 0,
+    death: 0,
+    collision: 0,
+    wastedEnergy: 0,
+    efficientRest: 0,
+    driveRelief: 0,
+    survivalSeek: 0,
+    spinPenalty: 0,
+    attack: 0,
+    damageTaken: 0,
+    defend: 0,
+    flee: 0,
+  }
+}
+
+export function sumRewardComponents(components: RewardComponents): number {
+  let total = 0
+  for (const key of REWARD_COMPONENT_KEYS) total += components[key]
+  return total
+}
+
+export function addRewardComponents(into: RewardComponents, add: RewardComponents): void {
+  for (const key of REWARD_COMPONENT_KEYS) into[key] += add[key]
+}
+
+export function computeRewardBreakdown(
+  context: DriveRewardContext,
+  config: RewardConfig,
+): RewardBreakdown {
+  const components = emptyRewardComponents()
   const damageDealt = context.damageDealt ?? 0
   const damageTaken = context.damageTaken ?? 0
   const damageReduced = context.damageReduced ?? 0
 
-  if (context.ate) reward += config.eatSuccess
-  if (context.gatheredAmount > 0) reward += config.gatherUnit * context.gatheredAmount
-  if (context.pickedUp) reward += config.pickupSuccess
-  if (context.interacted) reward += config.interactSuccess
-  if (context.died) reward += config.death
-  if (context.collided) reward += config.collision
-  if (isWastedEnergy(context)) reward += config.wastedEnergy
-  if (isEfficientRest(context)) reward += config.efficientRest
-  reward += driveTradeoffReward(context)
-  reward += survivalSeekReward(context)
+  if (context.ate) components.eat = config.eatSuccess
+  if (context.gatheredAmount > 0) components.gather = config.gatherUnit * context.gatheredAmount
+  if (context.pickedUp) components.pickup = config.pickupSuccess
+  if (context.interacted) components.interact = config.interactSuccess
+  if (context.died) components.death = config.death
+  if (context.collided) components.collision = config.collision
+  if (isWastedEnergy(context)) components.wastedEnergy = config.wastedEnergy
+  if (isEfficientRest(context)) components.efficientRest = config.efficientRest
+  components.driveRelief = driveTradeoffReward(context)
+
+  const seek = survivalSeekParts(context)
+  components.spinPenalty = seek.spinPenalty
+  components.survivalSeek = seek.survivalSeek
 
   if (damageDealt > 0) {
-    reward += config.attackHitUnit * damageDealt
+    components.attack = config.attackHitUnit * damageDealt
   } else if (context.attackAttempted && !context.attackHit && !context.died) {
-    reward += config.attackMiss
+    components.attack = config.attackMiss
   }
   if (damageTaken > 0 && !context.died) {
-    reward += config.damageTakenUnit * damageTaken
+    components.damageTaken = config.damageTakenUnit * damageTaken
   }
   if (damageReduced > 0) {
-    reward += config.defendReduceUnit * damageReduced
+    components.defend = config.defendReduceUnit * damageReduced
   }
   if (context.fledFarther && !context.died) {
-    reward += config.fleeSuccess
+    components.flee = config.fleeSuccess
   }
 
-  return reward
+  return { total: sumRewardComponents(components), components }
+}
+
+export function computeReward(context: DriveRewardContext, config: RewardConfig): number {
+  return computeRewardBreakdown(context, config).total
 }

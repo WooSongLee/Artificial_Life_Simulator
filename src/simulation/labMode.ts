@@ -121,18 +121,25 @@ export function ensureLabDrives(agent: Agent): Agent {
     fatigue: clampLabDrive(agent.fatigue, LAB_DRIVE_DEFAULTS.fatigue),
     curiosity: clampLabDrive(agent.curiosity, LAB_DRIVE_DEFAULTS.curiosity),
     comfort: clampLabDrive(agent.comfort, LAB_DRIVE_DEFAULTS.comfort),
+    heldLabObjectId: agent.heldLabObjectId ?? null,
   }
 }
 
 /** Strip Lab drive fields so Ecology agent schema stays free of them. */
 export function stripLabDrives(agent: Agent): Agent {
-  if (agent.fatigue === undefined && agent.curiosity === undefined && agent.comfort === undefined) {
+  if (
+    agent.fatigue === undefined &&
+    agent.curiosity === undefined &&
+    agent.comfort === undefined &&
+    agent.heldLabObjectId === undefined
+  ) {
     return agent
   }
   const next: Agent = { ...agent }
   delete next.fatigue
   delete next.curiosity
   delete next.comfort
+  delete next.heldLabObjectId
   return next
 }
 

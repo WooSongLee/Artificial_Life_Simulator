@@ -218,13 +218,14 @@ export const DEFAULT_CAMERA_POSITION = [18, 22, 18] as const
 export const DEFAULT_CAMERA_TARGET = [0, 0, 0] as const
 export const DEFAULT_CAMERA_FOV = 40
 
-/** Lab: close third-person so walk/run/gesture read on one human. */
-export const LAB_CAMERA_POSITION = [1.65, 1.35, 2.15] as const
+/** Lab: third-person framing — readable motion, comfortable default distance. */
+export const LAB_CAMERA_POSITION = [2.8, 2.2, 3.6] as const
 export const LAB_FOLLOW_HEIGHT = 1.05
-export const LAB_CAMERA_MIN_DISTANCE = 1.05
+export const LAB_CAMERA_MIN_DISTANCE = 0.6
+export const LAB_CAMERA_MAX_DISTANCE = 24
 
-export const CAMERA_MIN_DISTANCE = 10
-export const CAMERA_MAX_DISTANCE = 90
+export const CAMERA_MIN_DISTANCE = 4
+export const CAMERA_MAX_DISTANCE = 160
 export const CAMERA_MIN_POLAR = 0.22
 export const CAMERA_MAX_POLAR = 1.15
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatLabProbeSummary, runLabProbe } from './labProbe'
+import {
+  formatLabProbeSummary,
+  runLabProbe,
+  summarizeLabBehavior,
+  summarizeLabRewardBreakdown,
+} from './labProbe'
+import { emptyRewardComponents } from './rewards'
 import {
   labCurriculumPhaseFromProgress,
   labLearningCurriculum,
@@ -7,6 +13,7 @@ import {
   LAB_CURRICULUM_DRIVE_END,
   LAB_CURRICULUM_SURVIVAL_END,
 } from './labCurriculum'
+import { createEmptyActionCounts } from './actionEvents'
 
 describe('labCurriculum', () => {
   it('phases survival → drive → tradeoff on the minutes-scale schedule', () => {
@@ -24,6 +31,43 @@ describe('labCurriculum', () => {
     const learnSurv = labLearningCurriculum(0)
     expect(learnDrive.driveRewardScale).toBeGreaterThan(learnSurv.driveRewardScale)
     expect(learnSurv.survivalRewardScale).toBeGreaterThan(learnDrive.survivalRewardScale)
+  })
+})
+
+describe('summarizeLabBehavior', () => {
+  it('reports action shares and turn/move locomotion proxy', () => {
+    const counts = createEmptyActionCounts()
+    counts.MOVE_FORWARD = 50
+    counts.TURN_LEFT = 20
+    counts.TURN_RIGHT = 10
+    counts.EAT = 15
+    counts.GATHER = 5
+    const metrics = summarizeLabBehavior(counts)
+    expect(metrics.moveShare).toBeCloseTo(0.5)
+    expect(metrics.turnShare).toBeCloseTo(0.3)
+    expect(metrics.eatShare).toBeCloseTo(0.15)
+    expect(metrics.gatherShare).toBeCloseTo(0.05)
+    expect(metrics.turnToMoveRatio).toBeCloseTo(30 / 50)
+  })
+})
+
+describe('summarizeLabRewardBreakdown', () => {
+  it('reports component sums and |mass| shares', () => {
+    const sums = emptyRewardComponents()
+    sums.eat = 10
+    sums.spinPenalty = -2
+    sums.collision = -2
+    const metrics = summarizeLabRewardBreakdown({
+      sums,
+      rewardTicks: 100,
+      rewardSumApplied: 50,
+    })
+    expect(metrics.eat).toBe(10)
+    expect(metrics.spinPenalty).toBe(-2)
+    expect(metrics.collision).toBe(-2)
+    expect(metrics.averageApplied).toBeCloseTo(0.5)
+    expect(metrics.shares.eat).toBeCloseTo(10 / 14)
+    expect(metrics.shares.spinPenalty).toBeCloseTo(-2 / 14)
   })
 })
 
@@ -46,5 +90,20 @@ describe('labProbe', () => {
     if (report.learning.early.driveRate !== null && report.learning.late.driveRate !== null) {
       expect(report.learning.late.driveRate).toBeGreaterThan(report.learning.early.driveRate)
     }
+    // P0 observability: behavior metrics populated from brain.actionCounts.
+    expect(report.learning.behavior.moveShare).not.toBeNull()
+    expect(report.learning.behavior.turnShare).not.toBeNull()
+    expect(report.learning.behavior.turnToMoveRatio).not.toBeNull()
+    // P0 reward breakdown: component telemetry on both arms.
+    expect(report.learning.rewardBreakdown.ticks).toBeGreaterThan(0)
+    expect(report.frozen.rewardBreakdown.ticks).toBeGreaterThan(0)
+    const learnAbs =
+      Math.abs(report.learning.rewardBreakdown.eat) +
+      Math.abs(report.learning.rewardBreakdown.driveRelief) +
+      Math.abs(report.learning.rewardBreakdown.survivalSeek) +
+      Math.abs(report.learning.rewardBreakdown.spinPenalty) +
+      Math.abs(report.learning.rewardBreakdown.collision)
+    expect(learnAbs).toBeGreaterThan(0)
+    expect(report.frozen.averageReward).not.toBeNull()
   }, 60_000)
 })

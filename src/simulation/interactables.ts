@@ -163,7 +163,7 @@ export function canUseLookout(agent: Agent, world: WorldState): boolean {
   return findLookoutInInteractRange(agent, world.interactables ?? []) !== null
 }
 
-/** GATHER is legal for switch / box / rest bed / lookout (forage checked separately). */
+/** GATHER is legal for switch / box / rest bed / lookout (forage + Lab catalog checked separately). */
 export function canInteractGatherTarget(agent: Agent, world: WorldState): boolean {
   return (
     canInteractSwitch(agent, world) ||

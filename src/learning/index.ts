@@ -33,7 +33,11 @@ export {
 export { applyLearningUpdate, decideAction, DEFAULT_LEARNING_CONTEXT } from './controller'
 export { legalActionsFor } from './actionMask'
 export { encodeObservation, observeAgent } from './observation'
-export { computeReward } from './rewards'
+export {
+  computeReward,
+  computeRewardBreakdown,
+  emptyRewardComponents,
+} from './rewards'
 export { geneticActionBias, selectionScoresFrom } from './geneticBias'
 export { selectEpsilonGreedy, updateQValue } from './qLearning'
 export { AGENT_ACTIONS } from './types'

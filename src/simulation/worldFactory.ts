@@ -12,7 +12,9 @@ import {
 } from './constants'
 import { createForageContents } from './forage'
 import { createLabInteractables, pickLabFoodPosition } from './interactables'
+import { createDefaultLabEnvironment } from './labEnvironment'
 import { isHumanBehaviorLab } from './labMode'
+import { createKitchenBedroomLabObjects } from './labObjectRuntime'
 import { createEmptyOutcomeStats } from './outcomes'
 import {
   createClusterCenters,
@@ -138,6 +140,7 @@ export function generateWorld(
     ? { forageNodes: [], worldTools: [] }
     : createForageContents(nextConfig, objects, terrain, rng)
   const interactables = createLabInteractables(nextConfig, objects, terrain)
+  const labObjects = createKitchenBedroomLabObjects(nextConfig)
   const worldWithoutAgents: WorldState = {
     config: nextConfig,
     objects,
@@ -145,6 +148,8 @@ export function generateWorld(
     forageNodes: forage.forageNodes,
     worldTools: forage.worldTools,
     interactables,
+    labObjects,
+    labEnvironment: lab ? createDefaultLabEnvironment() : null,
     foodSpawnCooldown: 0,
     forageSpawnCooldown: 0,
     generation: 1,

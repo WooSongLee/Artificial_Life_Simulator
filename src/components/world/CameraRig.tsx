@@ -4,12 +4,14 @@ import { useLayoutEffect, useRef } from 'react'
 import { Vector3 } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import {
+  CAMERA_MAX_DISTANCE,
   CAMERA_MAX_POLAR,
   CAMERA_MIN_DISTANCE,
   CAMERA_MIN_POLAR,
   DEFAULT_CAMERA_POSITION,
   DEFAULT_CAMERA_TARGET,
   DEFAULT_WORLD_CONFIG,
+  LAB_CAMERA_MAX_DISTANCE,
   LAB_CAMERA_MIN_DISTANCE,
   LAB_CAMERA_POSITION,
   LAB_FOLLOW_HEIGHT,
@@ -56,7 +58,9 @@ export function CameraRig() {
   const worldSize = useSimulationStore((state) => state.world.config.size)
   const labMode = useSimulationStore((state) => isHumanBehaviorLab(state.world.config.mode))
   const scale = worldSize / DEFAULT_WORLD_CONFIG.size
-  const maxDistance = labMode ? clamp(6.5 * scale, 4, 10) : clamp(90 * scale, 40, 160)
+  const maxDistance = labMode
+    ? clamp(LAB_CAMERA_MAX_DISTANCE * scale, 12, LAB_CAMERA_MAX_DISTANCE)
+    : clamp(CAMERA_MAX_DISTANCE * scale, 60, 280)
   const minDistance = labMode ? LAB_CAMERA_MIN_DISTANCE : CAMERA_MIN_DISTANCE
   const camPos = labMode ? LAB_CAMERA_POSITION : DEFAULT_CAMERA_POSITION
   const desiredTarget = useRef(new Vector3())
@@ -98,12 +102,12 @@ export function CameraRig() {
     desiredTarget.current.set(agent.position.x, height, agent.position.z)
     cameraOffset.current.copy(camera.position).sub(controls.target)
 
-    // Keep Lab framing close: shrink oversized orbit distance toward lab default.
+    // Soft cap only extreme zoom-out while following; keep user zoom otherwise.
     if (lab) {
       const dist = cameraOffset.current.length()
-      const ideal = Math.hypot(LAB_CAMERA_POSITION[0], LAB_CAMERA_POSITION[1], LAB_CAMERA_POSITION[2])
-      if (dist > ideal * 1.35) {
-        cameraOffset.current.multiplyScalar(ideal / dist)
+      const softMax = LAB_CAMERA_MAX_DISTANCE * 0.95
+      if (dist > softMax) {
+        cameraOffset.current.multiplyScalar(softMax / dist)
       }
     }
 
@@ -124,8 +128,8 @@ export function CameraRig() {
       enableZoom
       minDistance={minDistance}
       maxDistance={maxDistance}
-      minPolarAngle={labMode ? 0.48 : CAMERA_MIN_POLAR}
-      maxPolarAngle={labMode ? 1.32 : CAMERA_MAX_POLAR}
+      minPolarAngle={labMode ? 0.35 : CAMERA_MIN_POLAR}
+      maxPolarAngle={labMode ? 1.45 : CAMERA_MAX_POLAR}
       target={[...DEFAULT_CAMERA_TARGET]}
     />
   )

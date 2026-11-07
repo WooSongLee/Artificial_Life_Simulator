@@ -6,16 +6,19 @@ import { clamp, clampStat, finiteNumber, wrapAngle } from '../utils/math'
 import { clampWorldConfig } from './constants'
 import { sanitizeEquipment, sanitizeForageNode, sanitizeWorldTool } from './forage'
 import { sanitizeInteractables } from './interactables'
+import { ensureWorldLabEnvironment, sanitizeLabEnvironment } from './labEnvironment'
 import { enforceLabPopulation } from './labMode'
+import { sanitizeHeldLabObjectId, sanitizeLabObjects } from './labObjectRuntime'
 import { sanitizeOutcomeStats } from './outcomes'
 import { generateTerrainGrid, isValidTerrainGrid } from './terrain'
 
-export function sanitizeAgent(agent: Agent): Agent {
+export function sanitizeAgent(agent: Agent, labObjects: Parameters<typeof sanitizeHeldLabObjectId>[1] = []): Agent {
   const health = clampStat(agent.health)
   const alive = agent.alive && health > 0
   const x = finiteNumber(agent.position.x)
   const z = finiteNumber(agent.position.z)
   const genome = normalizeGenome(agent.genome)
+  const heldLabObjectId = sanitizeHeldLabObjectId(agent.heldLabObjectId, labObjects)
 
   return {
     ...agent,
@@ -41,6 +44,7 @@ export function sanitizeAgent(agent: Agent): Agent {
     lastCombatTick: Math.max(0, Math.round(finiteNumber(agent.lastCombatTick))),
     combatCue: alive ? agent.combatCue : null,
     actionTarget: alive ? sanitizeActionTarget(agent.actionTarget) : null,
+    heldLabObjectId: alive ? heldLabObjectId ?? null : null,
     genome,
     parentGenomes: sanitizeParentGenomes(agent.parentGenomes),
   }
@@ -72,22 +76,27 @@ export function sanitizeWorld(world: WorldState): WorldState {
     ? world.terrain
     : generateTerrainGrid(config)
 
-  return enforceLabPopulation({
-    ...world,
-    config,
-    terrain,
-    foodSpawnCooldown: finiteNumber(world.foodSpawnCooldown),
-    forageSpawnCooldown: finiteNumber(world.forageSpawnCooldown),
-    generation: Math.max(1, Math.round(finiteNumber(world.generation, 1))),
-    generationStartTick: Math.max(0, Math.round(finiteNumber(world.generationStartTick))),
-    birthCount: Math.max(0, Math.round(finiteNumber(world.birthCount))),
-    outcomeStats: sanitizeOutcomeStats(world.outcomeStats),
-    objects: world.objects.map(sanitizeObject),
-    forageNodes: (world.forageNodes ?? []).map(sanitizeForageNode),
-    worldTools: (world.worldTools ?? []).map(sanitizeWorldTool),
-    interactables: sanitizeInteractables(world.interactables),
-    agents: world.agents.map(sanitizeAgent),
-  })
+  const labObjects = sanitizeLabObjects(world.labObjects)
+  return ensureWorldLabEnvironment(
+    enforceLabPopulation({
+      ...world,
+      config,
+      terrain,
+      foodSpawnCooldown: finiteNumber(world.foodSpawnCooldown),
+      forageSpawnCooldown: finiteNumber(world.forageSpawnCooldown),
+      generation: Math.max(1, Math.round(finiteNumber(world.generation, 1))),
+      generationStartTick: Math.max(0, Math.round(finiteNumber(world.generationStartTick))),
+      birthCount: Math.max(0, Math.round(finiteNumber(world.birthCount))),
+      outcomeStats: sanitizeOutcomeStats(world.outcomeStats),
+      objects: world.objects.map(sanitizeObject),
+      forageNodes: (world.forageNodes ?? []).map(sanitizeForageNode),
+      worldTools: (world.worldTools ?? []).map(sanitizeWorldTool),
+      interactables: sanitizeInteractables(world.interactables),
+      labObjects,
+      labEnvironment: sanitizeLabEnvironment(world.labEnvironment),
+      agents: world.agents.map((agent) => sanitizeAgent(agent, labObjects)),
+    }),
+  )
 }
 
 function sanitizeActionTarget(value: Agent['actionTarget']): Agent['actionTarget'] {

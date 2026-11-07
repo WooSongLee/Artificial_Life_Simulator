@@ -22,6 +22,7 @@ import type { ActionTarget, Agent } from '../types/agent'
 import type { AttackIntent } from '../types/combat'
 import type { ForageNode, WorldTool } from '../types/forage'
 import type { Interactable } from '../types/interactable'
+import type { LabObjectInstance } from '../types/labObject'
 import type { WorldObject, WorldState } from '../types/world'
 import { createId } from '../utils/id'
 import { clampStat, finiteNumber, rotateTowards, wrapAngle } from '../utils/math'
@@ -42,6 +43,7 @@ import {
   getConfiguredFoodCount,
   getFoodSpawnInterval,
 } from './constants'
+import { applyLabEnvironmentDriveEffects } from './labEnvironment'
 import {
   allowsDeath,
   applyLookoutDriveTradeoff,
@@ -78,6 +80,13 @@ import {
   findSwitchInInteractRange,
   pickLabFoodPosition,
 } from './interactables'
+import {
+  applyHeldPatch,
+  applyNeedDeltas,
+  tryExecuteLabEat,
+  tryExecuteLabGather,
+  tryExecuteLabPickUp,
+} from './labObjectRuntime'
 import { isBlockedWorldPosition } from './spatial'
 import { getAgentTerrain, getAgentTerrainProfile } from './terrain'
 import { createWorldObject } from './worldFactory'
@@ -114,6 +123,7 @@ export interface AgentPlan {
   gatheredAmount: number
   interactedId: string | null
   interactables: Interactable[] | null
+  labObjects: LabObjectInstance[] | null
   durabilityDelta: number
   targetKind: string | null
   actionTarget: ActionTarget | null
@@ -166,6 +176,7 @@ function skippedPlan(agent: Agent, droppedTools: WorldTool[] = []): AgentPlan {
     gatheredAmount: 0,
     interactedId: null,
     interactables: null,
+    labObjects: null,
     durabilityDelta: 0,
     targetKind: null,
     actionTarget: null,
@@ -342,6 +353,7 @@ function executeAction(
   gatheredAmount: number
   interactedId: string | null
   interactables: Interactable[] | null
+  labObjects: LabObjectInstance[] | null
   durabilityDelta: number
   targetKind: string | null
   actionTarget: ActionTarget | null
@@ -362,11 +374,45 @@ function executeAction(
       const turned = { ...agent, rotation: wrapAngle(agent.rotation - agent.turnRate * dt) }
       return withAutoEat(turned, world.objects)
     }
-    case 'EAT':
-      return withAutoEat(agent, world.objects)
+    case 'EAT': {
+      const ecologyEat = withAutoEat(agent, world.objects)
+      if (ecologyEat.ate) return ecologyEat
+      const labEat = tryExecuteLabEat(agent, world.labObjects ?? [])
+      if (!labEat || labEat.blocked) return ecologyEat
+      const afterNeeds = applyNeedDeltas(agent, labEat.needDeltas)
+      return {
+        ...withAutoEat(applyHeldPatch(afterNeeds, labEat.heldLabObjectId), world.objects),
+        ate: true,
+        interactedId: labEat.target.id,
+        labObjects: labEat.labObjects,
+        targetKind: labEat.target.objectType,
+        actionTarget: {
+          kind: labEat.target.objectType,
+          id: labEat.target.id,
+          x: labEat.target.position.x,
+          z: labEat.target.position.z,
+        },
+      }
+    }
     case 'REST':
       return withAutoEat(agent, world.objects)
     case 'PICK_UP': {
+      // Env-P2: Lab held-slot pick/drop before Ecology tool equipment.
+      const labPick = tryExecuteLabPickUp(agent, world.labObjects ?? [])
+      if (labPick && !labPick.blocked) {
+        return {
+          ...withAutoEat(applyHeldPatch(agent, labPick.heldLabObjectId), world.objects),
+          interactedId: labPick.target.id,
+          labObjects: labPick.labObjects,
+          targetKind: labPick.target.objectType,
+          actionTarget: {
+            kind: labPick.target.objectType,
+            id: labPick.target.id,
+            x: labPick.target.position.x,
+            z: labPick.target.position.z,
+          },
+        }
+      }
       const tool = findPickupTool(agent, world)
       if (!tool) return withAutoEat(agent, world.objects)
       const picked = applyPickup(agent, tool)
@@ -388,6 +434,37 @@ function executeAction(
           durabilityDelta: gathered.durabilityDelta,
           targetKind: node.kind,
           actionTarget: { kind: node.kind, id: node.id, x: node.position.x, z: node.position.z },
+        }
+      }
+      // Env-P1/P2: catalog Lab objects (fridge/stove/sink/table) before legacy drive props.
+      const labGather = tryExecuteLabGather(agent, world.labObjects ?? [])
+      if (labGather?.blocked) {
+        // Env-P2: held-gated affordance in range but missing item — log via actionTarget.
+        return {
+          ...withAutoEat(agent, world.objects),
+          interactedId: labGather.target.id,
+          targetKind: `blocked:${labGather.target.objectType}`,
+          actionTarget: {
+            kind: labGather.tags.join(','),
+            id: labGather.target.id,
+            x: labGather.target.position.x,
+            z: labGather.target.position.z,
+          },
+        }
+      }
+      if (labGather) {
+        const afterNeeds = applyNeedDeltas(agent, labGather.needDeltas)
+        return {
+          ...withAutoEat(applyHeldPatch(afterNeeds, labGather.heldLabObjectId), world.objects),
+          interactedId: labGather.target.id,
+          labObjects: labGather.labObjects,
+          targetKind: labGather.target.objectType,
+          actionTarget: {
+            kind: labGather.target.objectType,
+            id: labGather.target.id,
+            x: labGather.target.position.x,
+            z: labGather.target.position.z,
+          },
         }
       }
       // Lab drives: prefer rest/lookout over tool props when those drives dominate.
@@ -551,6 +628,7 @@ function withAutoEat(
     gatheredAmount: number
     interactedId: string | null
     interactables: Interactable[] | null
+    labObjects: LabObjectInstance[] | null
     durabilityDelta: number
     targetKind: string | null
     actionTarget: ActionTarget | null
@@ -570,6 +648,7 @@ function withAutoEat(
     gatheredAmount: extra.gatheredAmount ?? 0,
     interactedId: extra.interactedId ?? null,
     interactables: extra.interactables ?? null,
+    labObjects: extra.labObjects ?? null,
     durabilityDelta: extra.durabilityDelta ?? 0,
     targetKind: extra.targetKind ?? null,
     actionTarget: extra.actionTarget ?? null,
@@ -613,7 +692,11 @@ export function beginAgentTick(
 
   const geneticsEnabled = context.geneticsEnabled !== false
   const withLabDrives = isHumanBehaviorLab(world.config.mode)
-    ? tickLabDrives(starting, dt, labCurriculumDriveRates(context.tick ?? 0, world.config))
+    ? applyLabEnvironmentDriveEffects(
+        tickLabDrives(starting, dt, labCurriculumDriveRates(context.tick ?? 0, world.config)),
+        world.labEnvironment,
+        dt,
+      )
     : starting
   let driven = tickCombatTimers(applyDrives(withLabDrives, dt, geneticsEnabled), dt)
   if (!driven.alive) {
@@ -701,6 +784,7 @@ export function beginAgentTick(
     gatheredAmount: executed.gatheredAmount,
     interactedId: executed.interactedId,
     interactables: executed.interactables,
+    labObjects: executed.labObjects,
     durabilityDelta: executed.durabilityDelta,
     targetKind: executed.targetKind,
     actionTarget: executed.actionTarget,
@@ -769,6 +853,7 @@ export function finishAgentTick(
       ? world.forageNodes.map((node) => (node.id === plan.gatheredNode?.id ? plan.gatheredNode : node))
       : world.forageNodes,
     interactables: plan.interactables ?? world.interactables ?? [],
+    labObjects: plan.labObjects ?? world.labObjects ?? [],
   }
 
   const reward = applyLearningUpdate(

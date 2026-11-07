@@ -2,7 +2,17 @@ import { agentSeparation, attackRangeFor, findNearestLivingAgent } from '../simu
 import { AGENT_LOOKAHEAD, AGENT_RADIUS, FOOD_EAT_RADIUS, GATHER_RADIUS } from '../simulation/constants'
 import { durabilityBand, findVisibleForage, findVisibleTool } from '../simulation/forage'
 import { findVisibleInteractable, INTERACT_RADIUS } from '../simulation/interactables'
-import { allowsAgentSensing, clampSimulationMode } from '../simulation/labMode'
+import {
+  LAB_ENV_BRIGHT_THRESHOLD,
+  LAB_ENV_COLD_THRESHOLD_C,
+} from '../simulation/labEnvironment'
+import { allowsAgentSensing, clampSimulationMode, isHumanBehaviorLab } from '../simulation/labMode'
+import { getLabObjectType } from '../simulation/labObjectCatalog'
+import {
+  findVisibleLabObject,
+  getHeldLabObject,
+  labObjectCuePrefix,
+} from '../simulation/labObjectRuntime'
 import { isBlockedWorldPosition } from '../simulation/spatial'
 import {
   canDetectAt,
@@ -12,7 +22,8 @@ import {
 import type { Agent } from '../types/agent'
 import type { ForageNode, ToolType } from '../types/forage'
 import type { Interactable } from '../types/interactable'
-import type { WorldObject, WorldState } from '../types/world'
+import type { LabObjectInstance } from '../types/labObject'
+import type { LabEnvironmentState, WorldObject, WorldState } from '../types/world'
 import { distanceSq, shortestAngleDelta } from '../utils/math'
 import { EFFICIENT_REST_ENERGY, STAT_BAND_LOW_MAX, STAT_BAND_MID_MAX, URGENT_HUNGER } from './constants'
 import {
@@ -20,13 +31,16 @@ import {
   AGENT_DISTANCES,
   DRIVE_CUES,
   ENERGY_BANDS,
+  ENV_CUES,
   FOOD_DIRECTIONS,
   FOOD_DISTANCES,
   FORAGE_CUES,
   HEALTH_BANDS,
+  HELD_LAB_CUES,
   HELD_TOOLS,
   HUNGER_BANDS,
   INTERACTABLE_CUES,
+  LAB_OBJECT_CUES,
   NEARBY_TOOLS,
   OBSTACLE_AHEAD_VALUES,
   OBSERVATION_TERRAIN_VALUES,
@@ -36,11 +50,14 @@ import type {
   AgentDistance,
   DriveCue,
   EnergyBand,
+  EnvCue,
   FoodDirection,
   FoodDistance,
   ForageCue,
+  HeldLabCue,
   HeldTool,
   InteractableCue,
+  LabObjectCue,
   NearbyTool,
   Observation,
   ObservationTerrain,
@@ -206,6 +223,49 @@ export function observeDrive(agent: Agent): DriveCue {
   return 'curious'
 }
 
+/** Compact ambient cue: day/night × bright/dim × warm/cold. Ecology → na. */
+export function observeEnv(env: LabEnvironmentState | null | undefined): EnvCue {
+  if (!env) return 'na'
+  const night = env.period === 'night'
+  const bright = env.lighting >= LAB_ENV_BRIGHT_THRESHOLD
+  const warm = env.temperatureC >= LAB_ENV_COLD_THRESHOLD_C
+  const period = night ? 'nit' : 'day'
+  const light = bright ? 'brt' : 'dim'
+  const temp = warm ? 'wrm' : 'cld'
+  return `${period}_${light}_${temp}`
+}
+
+/** Nearest Lab object kind + close/fwd/oth. Ecology → na. */
+export function observeLabObject(agent: Agent, world: WorldState): LabObjectCue {
+  if (!isHumanBehaviorLab(clampSimulationMode(world.config.mode))) return 'na'
+  const target = findVisibleLabObject(agent, world.labObjects ?? [], (x, z, dist) =>
+    canDetectAt(agent, x, z, world, dist),
+  )
+  if (!target) return 'none'
+
+  const prefix = labObjectCuePrefix(target.objectType)
+  if (!prefix) return 'none'
+
+  const typeDef = getLabObjectType(target.objectType)
+  const reach = typeDef?.interactionRange ?? 0
+  const dist = Math.hypot(target.position.x - agent.position.x, target.position.z - agent.position.z)
+  if (dist <= reach) return `${prefix}_close`
+
+  const heading = observeLabObjectHeading(agent, target)
+  return heading === 'forward' ? `${prefix}_fwd` : `${prefix}_oth`
+}
+
+/** Lab held slot (not Ecology equipment). Ecology → na. */
+export function observeHeldLab(agent: Agent, world: WorldState): HeldLabCue {
+  if (!isHumanBehaviorLab(clampSimulationMode(world.config.mode))) return 'na'
+  const held = getHeldLabObject(agent, world.labObjects ?? [])
+  if (!held) return 'none'
+  if (held.objectType === 'food_item') {
+    return held.objectState.used === true ? 'food_ck' : 'food'
+  }
+  return 'other'
+}
+
 export function observeAgent(agent: Agent, world: WorldState): Observation {
   const food = findNearestFood(agent, world)
   const senseAgents = allowsAgentSensing(clampSimulationMode(world.config.mode))
@@ -227,16 +287,19 @@ export function observeAgent(agent: Agent, world: WorldState): Observation {
     health: bandStat(agent.health),
     interactable: observeInteractable(agent, world),
     drive: observeDrive(agent),
+    env: observeEnv(world.labEnvironment),
+    labObject: observeLabObject(agent, world),
+    heldLab: observeHeldLab(agent, world),
   }
 }
 
 export function encodeObservation(observation: Observation): StateKey {
-  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}|${observation.terrain}|${observation.terrainAhead}|${observation.forage}|${observation.nearbyTool}|${observation.heldTool}|${observation.agentDirection}|${observation.agentDistance}|${observation.health}|${observation.interactable}|${observation.drive}`
+  return `${observation.energy}|${observation.hunger}|${observation.foodDirection}|${observation.foodDistance}|${observation.obstacleAhead}|${observation.terrain}|${observation.terrainAhead}|${observation.forage}|${observation.nearbyTool}|${observation.heldTool}|${observation.agentDirection}|${observation.agentDistance}|${observation.health}|${observation.interactable}|${observation.drive}|${observation.env}|${observation.labObject}|${observation.heldLab}`
 }
 
 export function decodeObservation(stateKey: StateKey): Observation | null {
   const tokens = stateKey.split('|')
-  if (tokens.length !== 15) return null
+  if (tokens.length !== 18) return null
   const [
     energy,
     hunger,
@@ -253,6 +316,9 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     health,
     interactable,
     drive,
+    env,
+    labObject,
+    heldLab,
   ] = tokens
   if (
     !isToken(energy, ENERGY_BANDS) ||
@@ -269,7 +335,10 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     !isToken(agentDistance, AGENT_DISTANCES) ||
     !isToken(health, HEALTH_BANDS) ||
     !isToken(interactable, INTERACTABLE_CUES) ||
-    !isToken(drive, DRIVE_CUES)
+    !isToken(drive, DRIVE_CUES) ||
+    !isToken(env, ENV_CUES) ||
+    !isToken(labObject, LAB_OBJECT_CUES) ||
+    !isToken(heldLab, HELD_LAB_CUES)
   ) {
     return null
   }
@@ -290,6 +359,9 @@ export function decodeObservation(stateKey: StateKey): Observation | null {
     health,
     interactable,
     drive,
+    env,
+    labObject,
+    heldLab,
   }
 }
 
@@ -311,6 +383,11 @@ function observeTargetHeading(agent: Agent, target: ForageNode): 'forward' | 'ot
 }
 
 function observeInteractableHeading(agent: Agent, target: Interactable): 'forward' | 'other' {
+  const desired = Math.atan2(target.position.x - agent.position.x, target.position.z - agent.position.z)
+  return Math.abs(shortestAngleDelta(agent.rotation, desired)) <= Math.PI / 4 ? 'forward' : 'other'
+}
+
+function observeLabObjectHeading(agent: Agent, target: LabObjectInstance): 'forward' | 'other' {
   const desired = Math.atan2(target.position.x - agent.position.x, target.position.z - agent.position.z)
   return Math.abs(shortestAngleDelta(agent.rotation, desired)) <= Math.PI / 4 ? 'forward' : 'other'
 }

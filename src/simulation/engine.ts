@@ -8,11 +8,13 @@ import type { Rng } from '../utils/random'
 import { beginAgentTick, finishAgentTick, overlayAgents, respawnFood } from './agentSystem'
 import { resolveCombatTick, type CombatTickResult } from './combat'
 import { regenerateForage, removeWorldTool, replaceForageNode } from './forage'
+import { createDefaultLabEnvironment, tickLabEnvironment } from './labEnvironment'
 import {
   allowsCombat,
   allowsMating,
   clampSimulationMode,
   effectiveGeneticsEnabled,
+  isHumanBehaviorLab,
 } from './labMode'
 import { addOutcomeStats, createEmptyOutcomeStats, isDriveTargetKind } from './outcomes'
 
@@ -37,6 +39,7 @@ export function stepSimulation(
   let forageNodes = snapshot.world.forageNodes.slice()
   let worldTools = snapshot.world.worldTools.slice()
   let interactables = (snapshot.world.interactables ?? []).slice()
+  let labObjects = (snapshot.world.labObjects ?? []).slice()
   const plans = []
   const plannedAgents: Agent[] = []
   const evolutionConfig = context.evolutionConfig ?? DEFAULT_EVOLUTION_CONFIG
@@ -58,6 +61,7 @@ export function stepSimulation(
       forageNodes,
       worldTools,
       interactables,
+      labObjects,
       agents: overlayAgents(snapshot.world.agents, plannedAgents),
     }
     const plan = beginAgentTick(agent, worldView, dt, learningContext)
@@ -78,6 +82,9 @@ export function stepSimulation(
     }
     if (plan.interactables) {
       interactables = plan.interactables
+    }
+    if (plan.labObjects) {
+      labObjects = plan.labObjects
     }
     for (const dropped of plan.droppedTools) {
       worldTools = [...worldTools, dropped]
@@ -109,6 +116,7 @@ export function stepSimulation(
     forageNodes,
     worldTools,
     interactables,
+    labObjects,
     agents: combat.agents,
   }
   let outcomeStats = snapshot.world.outcomeStats ?? createEmptyOutcomeStats()
@@ -143,6 +151,9 @@ export function stepSimulation(
 
   const afterSpawn = respawnFood(objects, snapshot.world, dt)
   const afterForage = regenerateForage(forageNodes, snapshot.world, dt)
+  const labEnvironment = isHumanBehaviorLab(mode)
+    ? tickLabEnvironment(snapshot.world.labEnvironment ?? createDefaultLabEnvironment(), dt)
+    : null
   const nextWorld = {
     ...snapshot.world,
     agents,
@@ -150,6 +161,8 @@ export function stepSimulation(
     forageNodes: afterForage.forageNodes,
     worldTools,
     interactables,
+    labObjects,
+    labEnvironment,
     foodSpawnCooldown: afterSpawn.foodSpawnCooldown,
     forageSpawnCooldown: afterForage.forageSpawnCooldown,
     outcomeStats,

@@ -279,6 +279,8 @@ function migrateWorld(
         forageNodes: forage.forageNodes,
         worldTools: forage.worldTools,
         interactables: [],
+        labObjects: [],
+        labEnvironment: null,
         foodSpawnCooldown: 0,
         forageSpawnCooldown: 0,
         generation: 1,
@@ -317,6 +319,12 @@ function migrateWorld(
     lastCombatTick: typeof agent.lastCombatTick === 'number' ? agent.lastCombatTick : 0,
     combatCue: agent.combatCue ?? null,
     actionTarget: agent.actionTarget ?? null,
+    heldLabObjectId:
+      typeof agent.heldLabObjectId === 'string'
+        ? agent.heldLabObjectId
+        : agent.heldLabObjectId === null
+          ? null
+          : undefined,
   }))
 
   let forageNodes = Array.isArray(value.forageNodes) ? (value.forageNodes as WorldState['forageNodes']) : null
@@ -335,6 +343,23 @@ function migrateWorld(
     warnings.push('Older save had no interactables. Defaulted to an empty list.')
   }
 
+  const labObjects = Array.isArray(value.labObjects)
+    ? (value.labObjects as WorldState['labObjects'])
+    : []
+  if (!Array.isArray(value.labObjects)) {
+    warnings.push('Older save had no labObjects. Defaulted to an empty list.')
+  }
+
+  const labEnvironment =
+    value.labEnvironment === null
+      ? null
+      : value.labEnvironment !== undefined
+        ? (value.labEnvironment as WorldState['labEnvironment'])
+        : null
+  if (value.labEnvironment === undefined) {
+    warnings.push('Older save had no labEnvironment. Defaulted to null (Lab sanitize will seed).')
+  }
+
   const relocated = relocateAgentsOffWater({
     ...(value as unknown as WorldState),
     config,
@@ -344,6 +369,8 @@ function migrateWorld(
     forageNodes,
     worldTools,
     interactables,
+    labObjects,
+    labEnvironment,
     foodSpawnCooldown: typeof value.foodSpawnCooldown === 'number' ? value.foodSpawnCooldown : 0,
     forageSpawnCooldown: typeof value.forageSpawnCooldown === 'number' ? value.forageSpawnCooldown : 0,
     outcomeStats: sanitizeOutcomeStats(value.outcomeStats),

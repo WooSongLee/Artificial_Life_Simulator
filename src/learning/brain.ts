@@ -9,6 +9,7 @@ import {
 } from './constants'
 import { biasByAction, geneticActionBias, selectionScoresFrom } from './geneticBias'
 import { createEmptyQValues, meanQValue, peekQValues } from './qLearning'
+import { addRewardComponents, emptyRewardComponents, type RewardComponents } from './rewards'
 import { ACTION_SCHEMA_VERSION, OBSERVATION_SCHEMA_VERSION } from './schema'
 import { AGENT_ACTIONS } from './types'
 import type {
@@ -120,6 +121,9 @@ export function createBrain(
     actionCounts: createEmptyActionCounts(),
     actionSchemaVersion: ACTION_SCHEMA_VERSION,
     observationSchemaVersion: OBSERVATION_SCHEMA_VERSION,
+    rewardComponentSums: emptyRewardComponents(),
+    rewardTicks: 0,
+    rewardSumApplied: 0,
   }
 }
 
@@ -179,6 +183,9 @@ export function deserializeBrain(record: SerializedBrain): AgentBrain {
     actionCounts: { ...createEmptyActionCounts(), ...record.actionCounts },
     actionSchemaVersion: record.actionSchemaVersion ?? ACTION_SCHEMA_VERSION,
     observationSchemaVersion: record.observationSchemaVersion ?? OBSERVATION_SCHEMA_VERSION,
+    rewardComponentSums: emptyRewardComponents(),
+    rewardTicks: 0,
+    rewardSumApplied: 0,
   }
 }
 
@@ -235,6 +242,17 @@ export function recordLearningStep(
   brain.actionCounts[action] += 1
   pushWindow(brain.recentRewards, reward, LEARNING_REWARD_WINDOW)
   pushWindow(brain.recentExplored, explored ? 1 : 0, LEARNING_EXPLORE_WINDOW)
+}
+
+/** Always-on reward telemetry (Learning On and Frozen). */
+export function recordRewardTelemetry(
+  brain: AgentBrain,
+  components: RewardComponents,
+  appliedReward: number,
+): void {
+  addRewardComponents(brain.rewardComponentSums, components)
+  brain.rewardTicks += 1
+  brain.rewardSumApplied += appliedReward
 }
 
 export function mean(values: readonly number[]): number {

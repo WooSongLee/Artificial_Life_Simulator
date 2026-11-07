@@ -1,6 +1,7 @@
 import type { Agent } from './agent'
 import type { ForageNode, WorldTool } from './forage'
 import type { Interactable } from './interactable'
+import type { LabObjectInstance } from './labObject'
 import type { TerrainGrid, TerrainPreset } from './terrain'
 
 export interface WorldOutcomeStats {
@@ -62,6 +63,27 @@ export const LAB_CONDITIONS = [
 
 export type LabCondition = (typeof LAB_CONDITIONS)[number]
 
+/** Lab ambient clock bands (Env-P3). Ecology worlds omit environment state. */
+export const LAB_TIME_PERIODS = ['dawn', 'day', 'dusk', 'night'] as const
+
+export type LabTimePeriod = (typeof LAB_TIME_PERIODS)[number]
+
+/**
+ * Minimal Lab environment dynamics: time → lighting + temperature.
+ * Seeded only in `human_behavior_lab`; Ecology keeps `null`.
+ */
+export interface LabEnvironmentState {
+  /** Simulated clock hours in [0, 24). */
+  timeOfDayHours: number
+  period: LabTimePeriod
+  /** Ambient light level in [0, 1]. */
+  lighting: number
+  /** Ambient temperature °C. */
+  temperatureC: number
+  /** Cumulative period changes (probe / logs). */
+  periodTransitions: number
+}
+
 export interface WorldConfig {
   size: number
   gridDivisions: number
@@ -96,6 +118,15 @@ export interface WorldState {
   worldTools: WorldTool[]
   /** Door/Switch/Box objects. Ecology defaults to []; Lab seeds a switch→door pair. */
   interactables: Interactable[]
+  /**
+   * Catalog-driven Lab sandbox objects (Env-P1+). Ecology defaults to [].
+   * Legacy interactables remain authoritative for door/switch/box/bed/lookout.
+   */
+  labObjects: LabObjectInstance[]
+  /**
+   * Lab ambient time/lighting/temperature (Env-P3). Ecology = null.
+   */
+  labEnvironment: LabEnvironmentState | null
   foodSpawnCooldown: number
   forageSpawnCooldown: number
   generation: number

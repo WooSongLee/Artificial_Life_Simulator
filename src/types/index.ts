@@ -53,6 +53,8 @@ export type {
 } from './terrain'
 
 export type {
+  LabEnvironmentState,
+  LabTimePeriod,
   ObjectDefinition,
   ResourceDistribution,
   SimulationMode,
@@ -63,7 +65,23 @@ export type {
   WorldOutcomeStats,
   WorldState,
 } from './world'
-export { SIMULATION_MODES } from './world'
+export { LAB_TIME_PERIODS, SIMULATION_MODES } from './world'
+
+export type {
+  LabAffordanceDefinition,
+  LabAffordanceKind,
+  LabDiscoveryStatus,
+  LabObjectCategory,
+  LabObjectInstance,
+  LabObjectRelation,
+  LabObjectState,
+  LabObjectTypeDefinition,
+  LabWorldLayout,
+  LabZoneDefinition,
+  LabZoneId,
+  LabZonePresence,
+} from './labObject'
+export { LAB_AFFORDANCE_KINDS, LAB_ZONE_IDS } from './labObject'
 
 export type {
   LearningHistoryPoint,

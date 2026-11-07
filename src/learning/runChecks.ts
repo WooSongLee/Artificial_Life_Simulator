@@ -42,7 +42,7 @@ function encodeIsDeterministic(): void {
   const first = encodeObservation(observeAgent(agent, world))
   const second = encodeObservation(observeAgent(agent, world))
   assert(first === second, 'same observation must encode to the same state key')
-  assert(first.split('|').length === 13, 'state key must contain thirteen discrete features')
+  assert(first.split('|').length === 18, 'state key must contain eighteen discrete features')
 }
 
 function qUpdateMatchesFormula(): void {

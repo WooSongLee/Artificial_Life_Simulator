@@ -2,7 +2,7 @@ import type { Agent } from '../types/agent'
 import type { WorldState } from '../types/world'
 import type { Rng } from '../utils/random'
 import { DEFAULT_LEARNING_CONFIG, DEFAULT_REWARD_CONFIG } from './constants'
-import { ensureBrain, recordLearningStep } from './brain'
+import { ensureBrain, recordLearningStep, recordRewardTelemetry } from './brain'
 import { isLegalAction, legalActionsFor } from './actionMask'
 import { combineActionBias, driveActionBias, exploreWeightsFor, hasLabDrives } from './driveBias'
 import { effectsFromWorldConfig } from '../simulation/labConditions'
@@ -28,7 +28,7 @@ import {
   selectEpsilonGreedy,
   updateQValue,
 } from './qLearning'
-import { computeReward, survivalSeekReward } from './rewards'
+import { computeRewardBreakdown } from './rewards'
 import type {
   ActionOutcome,
   AgentAction,
@@ -140,14 +140,17 @@ export function applyLearningUpdate(
     attackAttempted: outcome.action === 'ATTACK',
     attackHit: (outcome.damageDealt ?? 0) > 0,
   }
-  const combined = computeReward(rewardContext, context.rewardConfig)
-  const seek = survivalSeekReward(rewardContext)
+  const breakdown = computeRewardBreakdown(rewardContext, context.rewardConfig)
+  const combined = breakdown.total
+  // Match prior curriculum split: seek = approach/turn shaping + spin penalty.
+  const seek = breakdown.components.survivalSeek + breakdown.components.spinPenalty
   let reward = combined
 
+  const brain = ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate)
   const lab = hasLabDrives(agent)
   const curriculum = lab ? labLearningCurriculum(
     // Peek steps before this update so phase matches decideAction.
-    ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate).totalSteps,
+    brain.totalSteps,
   ) : null
   if (curriculum) {
     // Scale base events and survival-seek separately so collision ≠ approach.
@@ -177,6 +180,9 @@ export function applyLearningUpdate(
     reward = scaledBase + scaledSeek
   }
 
+  // Raw component sums + applied reward (Learning On and Frozen).
+  recordRewardTelemetry(brain, breakdown.components, reward)
+
   if (!context.learningEnabled) {
     return reward
   }
@@ -185,8 +191,6 @@ export function applyLearningUpdate(
   if (!isLegalAction(outcome.action, legal)) {
     return reward
   }
-
-  const brain = ensureBrain(agent.id, context.learningConfig, agent.genome.explorationRate)
   const qValues = getOrCreateQValues(brain.qTable, previousStateKey)
   const index = actionIndex(outcome.action)
   const nextMax = outcome.died

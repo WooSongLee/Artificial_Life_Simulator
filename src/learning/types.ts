@@ -1,5 +1,27 @@
 import { TERRAIN_TYPES, type TerrainType } from '../types/terrain'
 
+/** Named terms produced by `computeRewardBreakdown` (raw, pre-curriculum). */
+export const REWARD_COMPONENT_KEYS = [
+  'eat',
+  'gather',
+  'pickup',
+  'interact',
+  'death',
+  'collision',
+  'wastedEnergy',
+  'efficientRest',
+  'driveRelief',
+  'survivalSeek',
+  'spinPenalty',
+  'attack',
+  'damageTaken',
+  'defend',
+  'flee',
+] as const
+
+export type RewardComponentKey = (typeof REWARD_COMPONENT_KEYS)[number]
+export type RewardComponents = Record<RewardComponentKey, number>
+
 export const AGENT_ACTIONS = [
   'MOVE_FORWARD',
   'TURN_LEFT',
@@ -69,6 +91,49 @@ export const INTERACTABLE_CUES = [
  * surv = hunger/energy urgent; tired/curious = human drive; calm = drives ok.
  */
 export const DRIVE_CUES = ['na', 'calm', 'tired', 'curious', 'surv'] as const
+/**
+ * Compact Lab ambient cue (Env-P3): period × light × temp.
+ * Ecology → na. day|nit × brt|dim × wrm|cld.
+ */
+export const ENV_CUES = [
+  'na',
+  'day_brt_wrm',
+  'day_brt_cld',
+  'day_dim_wrm',
+  'day_dim_cld',
+  'nit_brt_wrm',
+  'nit_brt_cld',
+  'nit_dim_wrm',
+  'nit_dim_cld',
+] as const
+/**
+ * Nearest runtime Lab object (Env-P2 cue): kind + close/forward/other.
+ * Ecology → na. Locked/contained food is hidden (fridge is the cue).
+ */
+export const LAB_OBJECT_CUES = [
+  'na',
+  'none',
+  'fridge_close',
+  'fridge_fwd',
+  'fridge_oth',
+  'stove_close',
+  'stove_fwd',
+  'stove_oth',
+  'sink_close',
+  'sink_fwd',
+  'sink_oth',
+  'table_close',
+  'table_fwd',
+  'table_oth',
+  'food_close',
+  'food_fwd',
+  'food_oth',
+] as const
+/**
+ * Lab held-slot band (separate from Ecology equipment heldTool).
+ * Ecology → na. food_ck = prepared/cooked food_item.
+ */
+export const HELD_LAB_CUES = ['na', 'none', 'food', 'food_ck', 'other'] as const
 
 export type EnergyBand = (typeof ENERGY_BANDS)[number]
 export type HungerBand = (typeof HUNGER_BANDS)[number]
@@ -84,6 +149,9 @@ export type AgentDistance = (typeof AGENT_DISTANCES)[number]
 export type HealthBand = (typeof HEALTH_BANDS)[number]
 export type InteractableCue = (typeof INTERACTABLE_CUES)[number]
 export type DriveCue = (typeof DRIVE_CUES)[number]
+export type EnvCue = (typeof ENV_CUES)[number]
+export type LabObjectCue = (typeof LAB_OBJECT_CUES)[number]
+export type HeldLabCue = (typeof HELD_LAB_CUES)[number]
 
 export interface Observation {
   energy: EnergyBand
@@ -101,6 +169,12 @@ export interface Observation {
   health: HealthBand
   interactable: InteractableCue
   drive: DriveCue
+  /** Lab ambient time/light/temp band; Ecology = na. */
+  env: EnvCue
+  /** Nearest Lab object direction band; Ecology = na. */
+  labObject: LabObjectCue
+  /** Lab held-slot band; Ecology = na. */
+  heldLab: HeldLabCue
 }
 
 export type StateKey = string
@@ -188,6 +262,15 @@ export interface AgentBrain {
   actionCounts: Record<AgentAction, number>
   actionSchemaVersion: number
   observationSchemaVersion: number
+  /**
+   * Runtime telemetry: raw (pre-curriculum) reward component sums.
+   * Not persisted in SerializedBrain; reset with the brain.
+   */
+  rewardComponentSums: RewardComponents
+  /** Ticks where a reward was computed (includes Frozen / learning-off). */
+  rewardTicks: number
+  /** Sum of applied (post-curriculum) rewards across rewardTicks. */
+  rewardSumApplied: number
 }
 
 export interface LearningStats {
